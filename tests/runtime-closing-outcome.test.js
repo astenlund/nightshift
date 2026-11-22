@@ -87,9 +87,9 @@ test('a delivery held by a failed closing check reads held everywhere, refuses a
   assert.deepEqual(held.handoverOutcome.routes.map(entry => entry.route), ['owner', 'close']);
   assert.match(held.handoverOutcome.next, /is held/);
 
-  // The refusal names the record, its cause and its routes; an exact replay of the held selection still returns it unchanged.
+  // The refusal names the record and its outcome, pointing to status and close-manifest; an exact replay of the held selection still returns it unchanged.
   const rows = revisions(f.root);
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && error.message.includes(id) && /failed/.test(error.message) && /provisional/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && error.message.includes(`Delivery ${id} is held.`) && /Status, which reaches any record by its ID/.test(error.message) && !/failed/.test(error.message));
   assert.equal((await execute(f.root, original, base)).revision, held.revision);
   assert.equal(revisions(f.root), rows);
 
@@ -146,7 +146,7 @@ test('a closing record replaced after completion is unauthenticated: consistency
   assert.equal(unauthenticated.handoverOutcome.outcome, 'unauthenticated');
   assert.deepEqual(unauthenticated.handoverOutcome.routes.map(entry => entry.route), ['close']);
   assert.notEqual(unauthenticated.handoverOutcome.next, null);
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /replaced after completion/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /is unauthenticated[.]/.test(error.message) && !/replaced after completion/.test(error.message));
   // An exact replay of an unauthenticated selection still refuses.
   await assert.rejects(execute(f.root, original, base), { code: 'delivery-consistency-unavailable' });
   const id = read(f.root).id;
@@ -225,7 +225,7 @@ test('a held delivery whose referenced evidence cannot be read is refused by clo
   assert.ok(output, 'The long check output is stored as an artifact');
   withStore(f.root, store => store.db.prepare('DELETE FROM artifacts WHERE id=?').run(output));
   await assert.rejects(status(f.root), { code: 'missing-evidence' });
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && /provisional/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && error.message.includes(`Delivery ${state.id} is held.`));
   // An exact replay reads and returns the saved record, so it meets the missing body.
   await assert.rejects(execute(f.root, original, base), { code: 'missing-evidence' });
   const members = [{ store: 'delivery', id: state.id }];
@@ -238,7 +238,7 @@ test('a held delivery whose referenced evidence cannot be read is refused by clo
   assert.equal(withStore(f.root, store => store.read(undefined, { hydrate: false })).status, 'complete');
   const [record] = overview(f.root, { dependencies: base }).records;
   assert.deepEqual(record.close, { offer: 'close' });
-  assert.equal(record.outcome.provisional, true);
+  assert.deepEqual(Object.keys(record.outcome).sort(), ['causes', 'outcome']);
 });
 
 test('a nonselected held delivery refuses a new handover as overlap and is offered close without a pickup', async t => {
@@ -322,30 +322,20 @@ test('the creation gate reuses a closed selection\'s close row as its latest row
   assert.equal(read(f.root).status, 'running');
 });
 
-test('routes follow the limits: a passed deadline leaves worker reconciliation, a spent allowance only refuses dispatch', () => {
+test('the owner route depends only on the selection and a reopened task, names the work its causes need and notes the limits', () => {
   const work = (needs, concern = 'check') => ({ kind: 'work', concern, subject: 'x', message: 'Fixture cause', needs });
   const past = new Date(Date.now() - 60000).toISOString();
   const names = (state, causes) => outcomes.routes(state, outcomes.judgment(causes), { current: true }).list.map(entry => entry.route);
-  assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['closing'])]), ['close']);
-  assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['bookkeeping'], 'worker')]), ['owner', 'close']);
-  // A spent allowance with a dispatch need leaves only a provisional owner route, naming what the owner would need.
-  const spent = outcomes.routes({ root: path.resolve(__dirname, '..'), limits: { maxDispatches: 1 }, dispatches: 1 }, outcomes.judgment([work(['closing', 'dispatch', 'review'])]), { current: true }).list;
-  assert.deepEqual(spent.map(entry => [entry.route, entry.provisional ?? false]), [['owner', true], ['close', false]]);
-  assert.match(spent[0].message, /obtain a fresh complete closing docs review. The dispatch allowance is spent/);
-  assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing'])]), ['owner', 'close']);
+  // Neither a passed deadline nor a spent allowance is inferred to refuse the owner's work: the route stays, with its limits note.
+  assert.deepEqual(names({ limits: { deadlineUtc: past } }, [work(['closing'])]), ['owner', 'close']);
+  assert.deepEqual(names({ limits: { maxDispatches: 1 }, dispatches: 1 }, [work(['closing', 'dispatch', 'review'])]), ['owner', 'close']);
+  const ownerMessage = causes => outcomes.routes({ limits: {} }, outcomes.judgment(causes), { current: true }).list.find(entry => entry.route === 'owner').message;
+  assert.match(ownerMessage([work(['closing'])]), /may refuse some of that work; the owner's own actions decide whether they do$/);
   // The owner is told to rerun only a failed or pending check; a passing check the review has not seen needs only the review.
-  const ownerMessage = causes => outcomes.routes({ root: path.resolve(__dirname, '..'), limits: {} }, outcomes.judgment(causes), { current: true }).list.find(entry => entry.route === 'owner').message;
-  assert.equal(ownerMessage([work(['closing', 'dispatch', 'review'])]), 'The owning session finishes the closing work: obtain a fresh complete closing docs review');
-  assert.match(ownerMessage([work(['closing', 'rerun', 'dispatch', 'review'])]), /rerun each failed or pending closing check until it passes and obtain a fresh complete closing docs review$/);
+  assert.match(ownerMessage([work(['closing', 'dispatch', 'review'])]), /^The owning session finishes the closing work: obtain a fresh complete closing docs review\. /);
+  assert.match(ownerMessage([work(['closing', 'rerun', 'dispatch', 'review'])]), /rerun each failed or pending closing check until it passes and obtain a fresh complete closing docs review\. /);
   // An unvalidated finding's dispatch is its skeptic validation, which a fresh docs review does not supply.
-  assert.equal(ownerMessage([work(['closing', 'dispatch'], 'finding')]), 'The owning session finishes the closing work: settle the closing findings and closures');
-  // Outside Git no closing assessment can be dispatched, so a dispatch need leaves no owner route.
-  const outside = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'closing-outcome-outside-git-'));
-  try {
-    const routed = outcomes.routes({ root: outside, limits: {} }, outcomes.judgment([work(['closing', 'dispatch'])]), { current: true });
-    assert.deepEqual(routed.list.map(entry => entry.route), ['close']);
-    assert.match(routed.ownerUnavailable, /outside Git/);
-  } finally { fs.rmSync(outside, { recursive: true, force: true }); }
+  assert.match(ownerMessage([work(['closing', 'dispatch'], 'finding')]), /^The owning session finishes the closing work: settle the closing findings and closures\. /);
   assert.deepEqual(names({ limits: {} }, [work(['unroutable'], 'task')]), ['close']);
   assert.deepEqual(outcomes.routes({}, outcomes.judgment([work(['closing'])]), { current: false }).list.map(entry => entry.route), ['close']);
   const refused = outcomes.routes({}, outcomes.judgment([work(['bookkeeping'], 'worker')]), { current: false, closeRefusal: { code: 'worker-activity-unknown', message: 'Fixture refusal' } });

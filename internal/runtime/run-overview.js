@@ -101,15 +101,15 @@ function describe(store, state, current, context, dependencies, outcome = null) 
   record.pickup = pickup(record, state, context, dependencies);
   const outcomes = require('./delivery-outcome');
   if (state.status === 'complete') {
-    // A complete delivery the hold scan judged not discharged is offered close from its outcome and the shared worker verdict alone,
-    // the same verdict its routes name, since the outcome already established its accounting; one it did not judge, or judged
-    // discharged, keeps today's value. Readability and the older-release guard are left to close-manifest.
+    // A complete delivery the hold scan judged not discharged carries its outcome and causes, status and close-manifest giving its
+    // routes, and is offered close from its outcome and the shared worker verdict alone, since the outcome already established its
+    // accounting; one it did not judge, or judged discharged, keeps today's value. Readability and the older-release guard are left to
+    // close-manifest.
     if (outcome && outcome.outcome !== outcomes.DISCHARGED) {
-      const { routed, verdict } = outcomes.routesFor(state, outcome, { current, dependencies });
-      record.outcome = { ...outcomes.brief(state.id, outcome, routed), provisional: true };
-      // An unavailable outcome has no worker verdict; close's own refusal for its cause stands in.
-      const refusal = verdict ?? require('./close').closeVerdict(state, dependencies, outcome);
-      record.close = refusal.eligible ? { offer: 'close' } : { offer: 'none', reason: refusal.code, message: refusal.message };
+      const { causes } = outcomes.brief(state.id, outcome, { list: [], ownerUnavailable: null });
+      record.outcome = { outcome: outcome.outcome, causes };
+      const verdict = require('./close').closeVerdict(state, dependencies, outcome);
+      record.close = verdict.eligible ? { offer: 'close' } : { offer: 'none', reason: verdict.code, message: verdict.message };
     }
     return record;
   }
@@ -143,18 +143,13 @@ function isOpen(state, current, outcome = null) {
 }
 
 // The closing outcome of every complete, unretired delivery that has no current settled-record verdict, judged read-only within one
-// shared input allowance; a shortfall leaves the rest unjudged and becomes a store-level notice, as a failed scan does.
+// shared input allowance; a shortfall leaves the rest unjudged and becomes a store-level notice. The per-record judgment is total, so a
+// refusal of the scan is the store's own, and the store is reported unavailable.
 function scanOutcomes(database, root, result) {
-  try {
-    const { byId, shortfall } = require('./delivery-outcome').readOutcomes(database, root, { shared: true, inTransaction: true });
-    if (shortfall) result.notices.push({ store: 'delivery', code: 'closing-outcome-shortfall', message: 'Some complete deliveries could not be judged within the shared input allowance, so whether they hold back the next handover is unknown' });
+  const { byId, shortfall } = require('./delivery-outcome').readOutcomes(database, root, { shared: true, inTransaction: true });
+  if (shortfall) result.notices.push({ store: 'delivery', code: 'closing-outcome-shortfall', message: 'Some complete deliveries could not be judged within the shared input allowance, so whether they hold back the next handover is unknown' });
 
-    return byId;
-  } catch (error) {
-    result.notices.push({ store: 'delivery', code: 'closing-outcome-unavailable', message: `The closing outcomes of complete deliveries could not be judged: ${error?.message ?? String(error)}` });
-
-    return new Map();
-  }
+  return byId;
 }
 
 // An opener refusal keeps the opener's code; anything else that stops the opener, such as a busy timeout, is a read error.

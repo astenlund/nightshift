@@ -281,7 +281,12 @@ class RunStore {
       try { context = this.kind === 'delivery' ? require('./creation-consistency').creationAssessment(this) : null; }
       catch (error) {
         const replay = error.replayRefusal;
-        if (replay && replayAcceptance(replay.selected, input)) Object.assign(error, { code: replay.code, message: replay.message });
+        let exactReplay = false;
+        try { exactReplay = Boolean(replay) && replayAcceptance(replay.selected, input); }
+        catch {
+          // A request that conflicts with the selection's acceptance is no exact replay: the gate's named refusal stands.
+        }
+        if (exactReplay) Object.assign(error, { code: replay.code, message: replay.message });
         throw error;
       }
       let previous = context ? context.current : this.read();

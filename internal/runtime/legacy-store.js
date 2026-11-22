@@ -83,6 +83,17 @@ function schemaState(db) {
   return { version, tables };
 }
 
+// A store that lacks either accounting table while a record carries saved accounting, or while the surviving table holds rows, is damaged
+// as a whole: writers create the pair together, and compaction keeps a store's records without accounting. Kept out of schemaState so the
+// migration inventory still classifies such a record itself.
+function requireAccountingTables(db, tables) {
+  const pair = ['accounting_commits', 'discharge_index'];
+  const missing = pair.filter(name => !tables.has(name));
+  if (missing.length === 0) return;
+  const accounted = db.prepare("SELECT 1 FROM runs WHERE json_type(state, '$.progress') IS NOT NULL LIMIT 1").get() || pair.filter(name => tables.has(name)).some(name => db.prepare(`SELECT 1 FROM ${name} LIMIT 1`).get());
+  requireCondition(!accounted, 'migration-store-unavailable', `Delivery store lacks ${missing.join(' and ')} although it holds independent accounting, so it is damaged as a whole; restore it from a backup or seek external recovery`);
+}
+
 function verifyTriggers(db, tables = tableNames(db)) {
   if (!tables.has('legacy_retirements')) return;
   const installed = new Map(db.prepare("SELECT name, sql FROM sqlite_master WHERE type='trigger'").all().map(row => [row.name, row.sql]));
@@ -160,4 +171,4 @@ function writeArtifact(db, value, maximumBytes = progress.MAX_FRONTIER_BYTES) {
   return id;
 }
 
-module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_BOUND_ARTIFACT_BYTES, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };
+module.exports = { ACTIVE_TABLE_SQL, CREATE_TABLES, MAX_ARTIFACT_ID_BYTES, MAX_DELIVERY_RECORDS, MAX_RUN_BOUND_ARTIFACT_BYTES, MAX_RUN_ID_BYTES, TRIGGERS, createSupport, isRetirementCertificate, requireAccountingTables, readArtifact, readArtifactBody, retirementRows, runBoundArtifacts, schemaState, sha256, tableNames, verifyTriggers, writeArtifact };

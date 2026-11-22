@@ -652,11 +652,11 @@ test('tracked destinations are bounded separately for each approved retirement m
   finally { store.close(); }
 });
 
-test('an older-format complete record without accounting tables is grouped as legacy and named unavailable with its recovery route', t => {
+test('an older-format complete record without accounting tables is grouped as legacy and named unavailable', t => {
   const { root, id } = fixture(t);
   const store = new RunStore(root);
   try {
-    assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('complete:no-independent-accounting') && error.message.includes(id) && error.message.includes(require('../internal/runtime/delivery-outcome').MISSING_TABLES) && error.message.includes('close-accounting-unavailable'));
+    assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes('complete:no-independent-accounting') && error.message.includes(`Delivery ${id} is unavailable.`));
   } finally { store.close(); }
 });
 
@@ -673,8 +673,8 @@ test('a schema-two record with missing independent accounting cannot be retired 
   assert.equal(execute(root, { action: 'inventory' }).counts.damagedModern, 1);
   assert.throws(() => execute(root, { action: 'manifest', ids: [id], choices: [choiceFor(id)] }), { code: 'migration-decision-unavailable' });
   const store = new RunStore(root);
-  // A complete record whose saved accounting lost its tables is named unavailable beside the other blockers.
-  try { assert.throws(() => store.transaction(() => creationAssessment(store)), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && error.message.includes(require('../internal/runtime/delivery-outcome').MISSING_TABLES)); }
+  // A record with saved accounting in a store without the accounting tables makes the whole store damaged, refused at store level.
+  try { assert.throws(() => store.transaction(() => creationAssessment(store)), error => /damaged as a whole/.test(error.message) && !error.message.includes(`Delivery ${id} is`)); }
   finally { store.close(); }
 });
 

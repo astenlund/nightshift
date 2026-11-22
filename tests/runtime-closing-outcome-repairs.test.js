@@ -129,19 +129,19 @@ test('closing coverage treats an unresolvable snapshot as no coverage rather tha
   assert.equal(closingDischargedSince(later, completedState, lost(later.closing.docs.reviews[1].snapshot)), false);
 });
 
-test('a held delivery whose saved worker refuses close names no close route on Ready, status or the refusal', async t => {
+test('a held delivery whose saved worker refuses close is offered no close on Ready and names no close route on status', async t => {
   const f = project(t);
   await completed(f.root);
   await closingCheck(f.root, 'post-completion tracking check', failing);
   withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-interrupted-check', interruptedWorker));
   const id = read(f.root).id;
   const record = overview(f.root, { dependencies: base }).records.find(entry => entry.id === id);
-  assert.equal(record.close.reason, 'worker-activity-unknown');
-  assert.ok(!record.outcome.routes.some(entry => entry.route === 'close'));
-  assert.ok(record.outcome.routes.some(entry => entry.route === 'none' && entry.code === 'worker-activity-unknown'));
+  assert.deepEqual([record.close.offer, record.close.reason], ['none', 'worker-activity-unknown']);
   const held = await status(f.root);
   assert.ok(!held.handoverOutcome.routes.some(entry => entry.route === 'close'));
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && /worker-activity-unknown/.test(error.message) && !/close: Any session/.test(error.message));
+  assert.ok(held.handoverOutcome.routes.some(entry => entry.route === 'none' && entry.code === 'worker-activity-unknown'));
+  // The refusal names the record and its outcome, leaving its routes to status.
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'overlapping-run' && error.message.includes(`Delivery ${id} is held.`) && !/Any session/.test(error.message));
 });
 
 test('a refusal led by another record still names the selection whose report awaits its recipient', async t => {
@@ -157,29 +157,27 @@ test('a refusal led by another record still names the selection whose report awa
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(first) && error.message.includes(second) && /report/.test(error.message));
 });
 
-test('limits decide the routes status names for held deliveries built through the runtime', async t => {
+test('status keeps the owner route under the run limits, noting them, for held deliveries built through the runtime', async t => {
   const past = new Date(Date.now() - 60000).toISOString();
   const routes = async root => (await status(root)).handoverOutcome.routes.map(entry => entry.route);
-  // A failed closing check needs a closing-record action, which a passed deadline refuses.
+  // A passed deadline and a spent dispatch allowance are not inferred to refuse the owner's work: the route stays with its note.
   const deadline = project(t);
   await completed(deadline.root);
   await closingCheck(deadline.root, 'post-completion tracking check', failing);
   withStore(deadline.root, store => store.update(owner, store.read().revision, 'fixture-deadline', state => { state.limits = { deadlineUtc: past }; }));
-  assert.deepEqual(await routes(deadline.root), ['close']);
-  // An uncovered passing check needs a fresh closing review, which a spent dispatch allowance refuses.
+  assert.deepEqual(await routes(deadline.root), ['owner', 'close']);
   const spent = project(t);
   await completed(spent.root);
   await closingCheck(spent.root, 'uncovered check', base);
   withStore(spent.root, store => store.update(owner, store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; }));
   assert.deepEqual(await routes(spent.root), ['owner', 'close']);
-  // A hold whose only cause is a worker keeps the owner's reconciliation route after the deadline; its unproven termination refuses close.
+  // A hold whose only cause is a worker: the owner is told to reconcile it, and its unproven termination refuses close.
   const worker = project(t);
   await completed(worker.root);
   withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', state => { interruptedWorker(state); state.limits = { deadlineUtc: past }; }));
   const held = await status(worker.root);
   assert.deepEqual(held.handoverOutcome.causes.map(entry => entry.concern), ['worker']);
-  // The owner is told only what its causes need: reconciling the worker, which the deadline does not refuse.
-  assert.equal(held.handoverOutcome.routes.find(entry => entry.route === 'owner').message, 'The owning session finishes the closing work: reconcile its workers');
+  assert.match(held.handoverOutcome.routes.find(entry => entry.route === 'owner').message, /^The owning session finishes the closing work: reconcile its workers\. The run's deadline/);
   assert.deepEqual(held.handoverOutcome.routes.map(entry => entry.route), ['owner', 'none']);
 });
 
@@ -379,17 +377,20 @@ test('an unreadable completion row read after accounting is established is a fai
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unauthenticated/.test(error.message));
 });
 
-test('Ready derives the limit routes from runtime state as status does', async t => {
+test('Ready carries a held delivery\'s outcome and causes with its close offer, leaving routes to status', async t => {
   const spent = project(t);
   await completed(spent.root);
   await closingCheck(spent.root, 'uncovered check', base);
   withStore(spent.root, store => store.update(owner, store.read().revision, 'fixture-allowance', state => { state.limits = { maxDispatches: 0 }; }));
-  assert.deepEqual(overview(spent.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['owner', 'close']);
+  const [record] = overview(spent.root, { dependencies: base }).records;
+  assert.deepEqual(Object.keys(record.outcome).sort(), ['causes', 'outcome']);
+  assert.deepEqual([record.outcome.outcome, record.outcome.causes.map(entry => entry.concern)], ['held', ['check']]);
+  assert.deepEqual(record.close, { offer: 'close' });
   const worker = project(t);
   await completed(worker.root);
-  const past = new Date(Date.now() - 60000).toISOString();
-  withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', state => { interruptedWorker(state); state.limits = { deadlineUtc: past }; }));
-  assert.deepEqual(overview(worker.root, { dependencies: base }).records[0].outcome.routes.map(entry => entry.route), ['owner', 'none']);
+  withStore(worker.root, store => store.update(owner, store.read().revision, 'fixture-worker', interruptedWorker));
+  const [held] = overview(worker.root, { dependencies: base }).records;
+  assert.deepEqual([held.outcome.outcome, held.close.offer, held.close.reason], ['held', 'none', 'worker-activity-unknown']);
 });
 
 test('a shortfall keeps the held outcome judged before it, while the gate keeps its allowance refusal and each record is judged alone', async t => {
@@ -786,7 +787,7 @@ test('a held and an unauthenticated delivery in one pass refuse as a consistency
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(held) && error.message.includes(unauthenticated) && /is held/.test(error.message) && /is unauthenticated/.test(error.message));
 });
 
-test('an undischarged nonselected stopped delivery is named with its causes and provisional routes', async t => {
+test('an undischarged nonselected stopped delivery is named by its status, pointing to status and close-manifest', async t => {
   const f = project(t);
   await completed(f.root);
   const stopped = read(f.root).id;
@@ -796,7 +797,7 @@ test('an undischarged nonselected stopped delivery is named with its causes and 
   await closingCheck(f.root, 'post-completion tracking check', failing);
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
   select(f.root, selection);
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(stopped) && /post-completion tracking check/.test(error.message) && /close-manifest/.test(error.message) && !/resume/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Delivery ${stopped} (stopped) has unresolved`) && /close-manifest/.test(error.message) && !/post-completion tracking check/.test(error.message));
 });
 
 test('a nonselected delivery a current verdict vouches for reads discharged on status, Ready and close-manifest alike', async t => {
@@ -918,32 +919,21 @@ test('an unreadable closing baseline or snapshot body makes the delivery unauthe
   assert.equal(withStore(f.root, store => store.read(undefined, { hydrate: false })).status, 'complete');
 });
 
-test('outside Git, status and Ready name only the administrative close for a hold that needs a closing review', async t => {
-  // Git discovery stops at the scratch folder, so the fixture project is positively outside Git.
-  const previous = process.env.GIT_CEILING_DIRECTORIES;
-  process.env.GIT_CEILING_DIRECTORIES = scratch;
-  t.after(() => { if (previous === undefined) { delete process.env.GIT_CEILING_DIRECTORIES; } else { process.env.GIT_CEILING_DIRECTORIES = previous; } });
-  const f = project(t);
-  assert.equal(require('../internal/runtime/evidence').outsideGitWorktree(f.root), true);
-  await completed(f.root);
-  // A passing closing check that no closing review has seen needs a review dispatch, which no project outside Git admits.
-  await closingCheck(f.root, 'uncovered check', base);
-  const held = (await status(f.root)).handoverOutcome;
-  assert.equal(held.outcome, 'held');
-  assert.deepEqual(held.routes.map(entry => entry.route), ['close']);
-  assert.match(held.ownerUnavailable, /outside Git/);
-  const [record] = overview(f.root, { dependencies: base }).records;
-  assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['close']);
-  assert.match(record.outcome.ownerUnavailable, /outside Git/);
-});
-
-test('a complete delivery whose store lost an accounting table is named unavailable with its recovery route by the refused handover', async t => {
-  const f = project(t);
-  await completed(f.root);
-  const id = read(f.root).id;
-  // An external loss: the discharge index table is gone while the run rows remain.
-  withStore(f.root, store => store.db.exec('DROP TABLE discharge_index'));
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && error.message.includes(outcomes.MISSING_TABLES) && /close-accounting-unavailable/.test(error.message));
+test('a store missing a table its records need is refused at store level by every surface, with no record outcome', async t => {
+  for (const table of ['discharge_index', 'accounting_commits', 'artifacts', 'active']) {
+    const f = project(t);
+    await completed(f.root);
+    const id = read(f.root).id;
+    // An external loss no production writer leaves: the table is gone while the run rows and their saved accounting remain.
+    withStore(f.root, store => store.db.exec(`DROP TABLE ${table}`));
+    await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && !error.message.includes(`Delivery ${id} is`), table);
+    // Status meets the damage in its ordinary read of the store, whichever failure that read gives.
+    await assert.rejects(status(f.root, id), Error, table);
+    const ready = overview(f.root, { dependencies: base });
+    assert.deepEqual([ready.records.length, ready.unavailable.map(entry => entry.store)], [0, ['delivery']], table);
+    const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base);
+    assert.equal(manifest.ineligible[0].code, 'migration-store-unavailable', table);
+  }
 });
 
 test('an interrupted closing check holds the delivery with its pending attempt and worker, refuses close until termination is proven, then closes', async t => {
@@ -990,29 +980,6 @@ test('an interrupted closing check holds the delivery with its pending attempt a
   assert.equal((await execute(f.root, reflection(), base)).status, 'running');
 });
 
-test('close keeps a member\'s accounting refusal when the store has lost its artifacts table', async t => {
-  const f = project(t);
-  await completed(f.root);
-  await closingCheck(f.root, 'post-completion tracking check', base);
-  const id = read(f.root).id;
-  // An external loss of the artifacts table, with the run rows intact.
-  withStore(f.root, store => store.db.exec('DROP TABLE artifacts'));
-  const manifest = closeManifest(f.root, { members: [{ store: 'delivery', id }] }, f.context, base);
-  // An unreadable store would surface as migration-store-unavailable here; the member keeps its own accounting refusal instead.
-  assert.deepEqual(manifest.ineligible.map(entry => entry.code), ['close-accounting-unavailable']);
-});
-
-test('status by run id returns an unavailable outcome when the store has lost its selection table', async t => {
-  const f = project(t);
-  await completed(f.root);
-  const id = read(f.root).id;
-  // An external loss of the active table, with the record and its evidence intact.
-  withStore(f.root, store => store.db.exec('DROP TABLE active'));
-  const outcome = (await status(f.root, id)).handoverOutcome;
-  assert.equal(outcome.outcome, 'unavailable');
-  assert.ok(outcome.routes.some(entry => entry.route === 'recovery'));
-});
-
 test('a complete selection over its reserved input bound is named unavailable by the refused handover', async t => {
   const f = project(t);
   await completed(f.root);
@@ -1020,7 +987,7 @@ test('a complete selection over its reserved input bound is named unavailable by
   const saved = BOUNDS.input;
   t.after(() => { BOUNDS.input = saved; });
   BOUNDS.input = 1;
-  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(id) && /unavailable/.test(error.message) && /current and latest-history input exceeds its bound/.test(error.message));
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Delivery ${id} is unavailable.`));
 });
 
 test('an exact replay beside a held delivery refuses as overlap even while the selection owes its report', async t => {
@@ -1037,15 +1004,4 @@ test('an exact replay beside a held delivery refuses as overlap even while the s
   // A new handover is refused for the report first; an exact replay, which presenting the report cannot clear, is refused as overlap.
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'report-delivery-pending' && error.message.includes(held));
   await assert.rejects(execute(f.root, original, base), error => error.code === 'overlapping-run' && error.message.includes(held));
-});
-
-test('Ready names only the administrative close for a held delivery past its deadline', async t => {
-  const f = project(t);
-  await completed(f.root);
-  await closingCheck(f.root, 'post-completion tracking check', failing);
-  const past = new Date(Date.now() - 60000).toISOString();
-  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-deadline', state => { state.limits = { deadlineUtc: past }; }));
-  const [record] = overview(f.root, { dependencies: base }).records;
-  assert.deepEqual(record.outcome.routes.map(entry => entry.route), ['close']);
-  assert.match(record.outcome.ownerUnavailable, /deadline/);
 });

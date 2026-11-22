@@ -683,7 +683,7 @@ test('a pass refused for a reason other than the shared allowance leaves verdict
   const refused = pass(store);
   assert.equal(refused.error?.code, CODE);
   assert.equal(refused.error.sharedAllowance, undefined);
-  assert.match(refused.error.message, /completion history exceeds its own read bound/);
+  assert.ok(refused.error.message.includes(`Delivery ${rows[0].run_id} is unavailable.`), refused.error.message);
   assert.deepEqual(saved(store), tampered, 'A refusal by a per-record bound writes no verdict');
   assert.deepEqual(guards(store), installed);
 });

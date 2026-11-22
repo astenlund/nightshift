@@ -15,7 +15,7 @@ const { HistoryReader, latestRevision, latestRevisionOfKind } = require('./histo
 const verdicts = require('./settled-verdicts');
 const outcomes = require('./delivery-outcome');
 const { validateCertificate, MAX_CERTIFICATE_CHAIN_BYTES, MAX_HISTORICAL_BYTES, MAX_MANIFEST_CHAIN_BYTES } = require('./legacy-certificates');
-const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, retirementRows, runBoundArtifacts, schemaState, verifyTriggers } = require('./legacy-store');
+const { MAX_DELIVERY_RECORDS: MAX_RECORDS, MAX_RUN_ID_BYTES, isRetirementCertificate, requireAccountingTables, retirementRows, runBoundArtifacts, schemaState, verifyTriggers } = require('./legacy-store');
 
 // Read at call time so fixtures can narrow them for one assessment. `input` is the allowance shared across the whole pass, which
 // records confirmed by a settled-record verdict are not charged to; `completionRow` bounds each completed record's completion row on
@@ -271,6 +271,7 @@ function assessment(store, options = {}) {
   const rows = store.db.prepare('SELECT id, revision FROM runs ORDER BY id LIMIT ?').all(MAX_RECORDS + 1);
   requireCondition(rows.length <= MAX_RECORDS, CODE, 'Delivery identity inventory exceeds its bound');
   const tables = schemaState(store.db).tables;
+  requireAccountingTables(store.db, tables);
   const retirements = retirementRows(store.db, tables);
   verifyTriggers(store.db, tables);
   const retiredById = new Map(retirements.map(row => [row.runId, row.artifact]));
@@ -378,13 +379,12 @@ function assessment(store, options = {}) {
       return { ...record, deferred: true };
     }
     if (!['artifacts', 'accounting_commits', 'discharge_index'].every(table => tables.has(table))) {
-      // A complete delivery without the accounting tables is unavailable, named beside every other blocker; an older-format record also
-      // joins the legacy group, and any other record with saved accounting refuses.
-      const missing = outcomeOnFailure ? { outcome: outcomes.judgment([outcomes.cause('accounting', null, outcomes.MISSING_TABLES)]) } : {};
-      if (state.progress !== undefined && outcomeOnFailure) return { ...record, ...missing };
+      // A record in a store without the accounting tables never had independent accounting, since a store holding any is refused as
+      // damaged before the pass: it joins the legacy group, a complete one named unavailable beside the other blockers.
       requireCondition(state.progress === undefined, CODE, `Delivery ${state.id} has unsupported accounting without its required tables`);
       legacyUnavailable.push({ id: state.id, status: state.status, reason: 'no-independent-accounting' });
-      return { ...record, ...missing };
+
+      return { ...record, ...(outcomeOnFailure ? { outcome: outcomes.judgment([outcomes.cause('accounting', null, outcomes.MISSING_TABLES)]) } : {}) };
     }
     if (options.resourceOnly && state.progress === undefined) {
       verifyArtifacts(store.db, state, retirementEvidence);
@@ -414,8 +414,7 @@ function assessment(store, options = {}) {
         discharged = outcome.outcome === outcomes.DISCHARGED;
       }
       if (independent === null && !discharged) legacyUnavailable.push({ id: state.id, status: state.status, reason: 'discharge-unresolved' });
-      // A record that is not complete keeps its judged causes, which its blocker text names.
-      return { ...record, discharged, ...(judged ? { outcome } : outcome ? { causes: outcome.causes } : {}), currentAccounting: independent?.status === 'current' };
+      return { ...record, discharged, ...(judged ? { outcome } : {}), currentAccounting: independent?.status === 'current' };
     } catch (error) {
       if (error.sharedAllowance) throw error;
       if (judged && error instanceof RunError) return { ...record, outcome: outcomes.judgment([outcomes.causeOf(error, 'accounting')]) };
@@ -429,38 +428,32 @@ function assessment(store, options = {}) {
   // Every blocker the records judged so far establish, as {record, code, text}, in the order they were judged: a complete delivery by its
   // outcome, any other record that is not discharged other than the selection (a record the legacy group names is left to that group),
   // then the selection's own blockers and every active worker. Each refusal exit names the same list, so code precedence never hides a
-  // blocker the pass established. Routes come from saved state alone: no process is inspected while the transaction is held.
+  // blocker the pass established. Each is named by its ID with its outcome or status; status and close-manifest give causes and routes.
   const establishedBlockers = () => {
-    const now = Date.now();
     const selected = records.find(record => record.id === selectedId) ?? null;
     const legacy = new Set(legacyUnavailable.map(entry => entry.id));
     const list = [];
     for (const record of records) {
       if (record.outcome) {
         if (record.outcome.outcome === outcomes.DISCHARGED) continue;
-        const { routed } = outcomes.routesFor(record.state, record.outcome, { current: record === selected, now, inspect: false });
-        list.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: outcomes.describe(record.id, record.outcome, routed, { provisional: true }) });
+        list.push({ record, code: record.outcome.outcome === outcomes.HELD ? 'overlapping-run' : CODE, text: `Delivery ${record.id} is ${record.outcome.outcome}.` });
       } else if (record !== selected && !record.discharged && !record.deferred && !legacy.has(record.id)) {
-        const status = record.state?.status ?? 'unknown';
-        const causes = (record.causes ?? []).filter(entry => !(status !== 'complete' && /no recorded completion row/.test(entry.message))).map(entry => entry.message);
-        // Runtime mutations reach only the current selection, so this record's owner cannot resume it; the administrative close remains.
-        const routes = status === 'stopped' ? ' Routes (provisional until the record is read in full): any session closes it as settled through the administrative close (close-manifest, then close) while its accounting is current.' : '';
-        list.push({ record, code: CODE, text: `Delivery ${record.id} (${status}) still has unresolved or unavailable obligations${causes.length ? `: ${causes.join('; ')}` : status === 'stopped' ? ': it stopped before its completion was discharged' : ''}.${routes}` });
+        list.push({ record, code: CODE, text: `Delivery ${record.id} (${record.state?.status ?? 'unknown'}) has unresolved or unavailable obligations.` });
       }
     }
     const own = [];
     if (selected?.state) {
-      if (!selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state)) own.push({ record: selected, code: 'report-delivery-pending', text: `Delivery ${selected.id} (selected) owes its morning report to its recipient: present the saved report and record report-delivered with the user's reply.` });
+      if (!selected.retired && !isClosed(selected.state) && selected.discharged && reportAwaitsRecipient(selected.state)) own.push({ record: selected, code: 'report-delivery-pending', text: `Delivery ${selected.id} (selected) owes its morning report.` });
       // A stopped selection the pass deferred behind a legacy blocker was never judged, so it is not named; a running one never discharges.
-      if (!selected.discharged && (selected.state.status === 'running' || (selected.state.status === 'stopped' && !selected.deferred))) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}: reconcile, resume or explicitly finish it.` });
-      // A closed selection whose close row no longer counts it discharged cannot be resumed; it needs inspection.
-      if (!selected.discharged && !selected.retired && !selected.deferred && isClosed(selected.state)) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is closed, but its close row does not count it discharged: inspect it with raw-inspect.` });
+      if (!selected.discharged && (selected.state.status === 'running' || (selected.state.status === 'stopped' && !selected.deferred))) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is ${selected.state.status}.` });
+      if (!selected.discharged && !selected.retired && !selected.deferred && isClosed(selected.state)) own.push({ record: selected, code: 'overlapping-run', text: `Delivery ${selected.id} (selected) is closed, but its close row does not count it discharged.` });
     }
     const named = new Set(list.map(entry => entry.record));
-    for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker to reconcile.` });
+    for (const record of records.filter(entry => entry.state?.workers.some(workerIsActive) && !named.has(entry))) own.push({ record, code: 'overlapping-run', text: `Delivery ${record.id} has an active or uncertain worker.` });
+    const all = [...list, ...own];
 
     // The legacy group is carried as a clause of its own, which the grouped exits lead with and every other exit appends.
-    return { list, own, legacy: legacyUnavailable.length > 0 ? legacyRefusal(legacyUnavailable) : '', text: [...list, ...own].length ? `. Blocking: ${[...list, ...own].map(entry => entry.text).join(' ')}` : '' };
+    return { list, own, legacy: legacyUnavailable.length > 0 ? legacyRefusal(legacyUnavailable) : '', text: all.length ? `. Blocking: ${all.map(entry => entry.text).join(' ')} ${WHERE_TO_LOOK}` : '' };
   };
   const refuseForAllowance = error => {
     const { text } = establishedBlockers();
@@ -563,6 +556,7 @@ function assessment(store, options = {}) {
 
 // The refusal for a selection whose morning report awaits its recipient, shared with the store's replaceability check.
 const REPORT_PENDING = 'The latest delivery\'s morning report awaits its recipient: present the saved report, record report-delivered with the user\'s reply, then accept the new delivery';
+const WHERE_TO_LOOK = "Status, which reaches any record by its ID, and close-manifest give each named record's causes and routes; Ready lists its outcome and causes.";
 
 
 // Runs one creation pass over `store`'s current transaction that writes nothing and refuses nothing, to learn whether it would count

@@ -115,7 +115,7 @@ function readStore(root, store, memberIds = []) {
 
 // The closing outcome of every complete, unretired delivery among the requested members, judged alone through the creation gate's own checks, and
 // whether every evidence body its saved state references can be read (null, or the refusal the ordinary read would give), both read
-// in the caller's transaction. A judgment that fails is the record's Unavailable outcome.
+// in the caller's transaction. A record-local failure is the record's Unavailable outcome; a store-level one refuses the store.
 function completeJudgments(root, database, states, retired, tables) {
   const outcomesModule = require('./delivery-outcome');
   const { verificationPass, verifyArtifacts } = require('./artifact-hydration');
@@ -123,9 +123,8 @@ function completeJudgments(root, database, states, retired, tables) {
   const outcomes = new Map();
   const evidence = new Map();
   if (!complete.length) return { outcomes, evidence };
-  let judged;
-  try { judged = outcomesModule.readOutcomes(database, root, { ids: complete.map(state => state.id), inTransaction: true }).byId; }
-  catch (error) { judged = new Map(complete.map(state => [state.id, { judgment: outcomesModule.judgment([outcomesModule.causeOf(error, 'accounting')]) }])); }
+  // The per-record judgment is total, so a refusal here is the store's own and makes the whole store unreadable to close.
+  const judged = outcomesModule.readOutcomes(database, root, { ids: complete.map(state => state.id), inTransaction: true }).byId;
   for (const state of complete) {
     const entry = judged.get(state.id);
     if (entry?.judgment) outcomes.set(state.id, entry.judgment);

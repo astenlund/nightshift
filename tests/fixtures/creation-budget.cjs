@@ -163,7 +163,7 @@ async function main() {
     assert.ok(Math.max(...baseline.accountingBytes) < perRecord - 1, 'Fixture precondition: every accounting charge must fit the chosen allowance');
     const refused = assess('completion-evidence-over-allowance', perRecord - 1);
     assert.equal(refused.error, 'delivery-consistency-unavailable', 'A record whose own completion evidence passes the allowance is refused');
-    assert.match(refused.message, /Accounting recovery exceeded its byte bound/);
+    assert.match(refused.message, /Delivery [0-9a-f-]+ is unavailable[.]/);
     assert.equal(refused.replaceable, null);
     // The accounting and provenance allowance bounds each record judged in full, and its bytes count against the shared input
     // allowance: frontiers that together pass 8 MiB, which the 3.3.40 gate refused, are admitted while each record's fits.
@@ -191,8 +191,8 @@ async function main() {
     // One record whose own accounting artifacts pass the allowance is still refused.
     const narrowed = assess('one-record-over-accounting-allowance', Math.max(...four.accountingBytes) - 1);
     assert.equal(narrowed.error, 'delivery-consistency-unavailable');
-    // A complete delivery past its own accounting allowance reads unavailable and is named with its cause.
-    assert.match(narrowed.message, /is unavailable: Accounting recovery exceeded its byte bound/);
+    // A complete delivery past its own accounting allowance reads unavailable and is named with that outcome.
+    assert.match(narrowed.message, /Delivery [0-9a-f-]+ is unavailable[.]/);
   } finally {
     if (store) store.close();
     store = undefined;
@@ -250,7 +250,7 @@ async function completionRows() {
     assert.equal(refused.error?.code, 'delivery-consistency-unavailable');
     // The gate judges records in id order, so the refusal names the first of the records whose row is the largest.
     const over = rows.filter(row => row.bytes === largest).map(row => row.id).sort()[0];
-    assert.match(refused.error.message, new RegExp(`Delivery ${over} completion history exceeds its own read bound`));
+    assert.ok(refused.error.message.includes(`Delivery ${over} is unavailable.`), refused.error.message);
     assert.equal(snapshot(), before, 'Assessment must not change durable rows');
   } finally {
     Object.assign(BOUNDS, defaults);

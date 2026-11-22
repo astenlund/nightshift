@@ -39,25 +39,17 @@ function judgment(causes) {
   return { outcome, causes };
 }
 
-// Why the owner cannot discharge a held delivery itself, as {reason}, or {provisional: true} at a spent dispatch allowance while a cause
-// needs a closing-record action, which may or may not need a new assessment, or null while it can: runtime mutations reach only the current selection, a reopened task cannot be unblocked on
-// a complete record, a passed deadline refuses every closing-record action, no assessment can be dispatched outside Git, and a spent
-// dispatch allowance refuses only a new dispatch. Worker reconciliation is bookkeeping, which neither limit refuses. Whether a collected
-// result or a recorded validation would satisfy a cause is not inferred here: the route names what the owner would need, as the user
-// decided on 2026-11-21, and the owner's own actions are authoritative.
-function ownerBlocked(state, { causes }, { current, now }) {
+// Why the owner cannot discharge a held delivery itself, as {reason}, or null while it can: runtime mutations reach only the current
+// selection, and a reopened task cannot be unblocked on a complete record. Whether the run's limits or Git will refuse some of the
+// owner's work is not inferred: the route notes that they may, and the owner's own actions decide it.
+function ownerBlocked({ causes }, { current }) {
   if (!current) return { reason: 'only the current selection can be changed by its owner' };
   if (causes.some(entry => entry.needs.includes('unroutable'))) return { reason: 'a task reopened after completion cannot be unblocked on a complete record' };
-  const deadline = state.limits?.deadlineUtc;
-  if (deadline && now >= Date.parse(deadline) && causes.some(entry => entry.needs.includes('closing'))) return { reason: 'the run deadline has passed, which refuses every closing-record action' };
-  const dispatching = causes.some(entry => entry.needs.includes('dispatch'));
-  if (dispatching && require('./evidence').outsideGitWorktree(state.root)) return { reason: 'the project is outside Git, where no closing assessment can be dispatched' };
-  // At a spent allowance, any closing-record action may turn out to need a dispatch (a stale validation, a repair's closure).
-  const max = state.limits?.maxDispatches;
-  if (max !== undefined && (state.dispatches ?? 0) >= max && causes.some(entry => entry.needs.includes('closing'))) return { provisional: true };
 
   return null;
 }
+
+const LIMITS_NOTE = 'The run\'s deadline and dispatch allowance, and the working Git checkout an assessment dispatch needs, may refuse some of that work; the owner\'s own actions decide whether they do';
 
 // The owner's closing work named from the hold's causes, so the route never prescribes an action no cause needs.
 function ownerWork(causes) {
@@ -76,30 +68,29 @@ function ownerWork(causes) {
 // The routes that apply to a delivery now, from its outcome and saved state: `owner`, `close`, `recovery`, or `none` naming the close
 // eligibility refusal (`closeRefusal`, {code, message}) that leaves no route until it is resolved. `ownerUnavailable` says why a held
 // delivery has no owner route.
-function routes(state, value, { current = false, now = Date.now(), closeRefusal = null } = {}) {
+function routes(state, value, { current = false, closeRefusal = null } = {}) {
   if (value.outcome === UNAVAILABLE) {
     const accounting = value.causes.some(entry => entry.kind === 'accounting');
 
     return { list: [{ route: 'recovery', message: accounting ? `${require('./close').accountingRemedy('complete', { saved: false }).replace(/^consult/, 'Consult')}; close refuses it with close-accounting-unavailable until then` : 'Inspect it with raw-inspect or restore store capacity; close refuses it until it fits its bounds' }], ownerUnavailable: 'its judgment is unavailable' };
   }
   if (![HELD, UNAUTHENTICATED].includes(value.outcome)) return { list: [], ownerUnavailable: null };
-  const blocked = value.outcome === HELD ? ownerBlocked(state, value, { current, now }) : { reason: 'its evidence could not be authenticated' };
+  const blocked = value.outcome === HELD ? ownerBlocked(value, { current }) : { reason: 'its evidence could not be authenticated' };
   const list = [];
-  if (!blocked) list.push({ route: 'owner', message: `The owning session finishes the closing work: ${ownerWork(value.causes)}` });
-  else if (blocked.provisional) list.push({ route: 'owner', provisional: true, message: `The owning session finishes the closing work: ${ownerWork(value.causes)}. The dispatch allowance is spent, which refuses a new dispatch, so where that work needs a new assessment it can finish only with assessments already collected for this closing record and validations still current, which its own actions decide` });
+  if (!blocked) list.push({ route: 'owner', message: `The owning session finishes the closing work: ${ownerWork(value.causes)}. ${LIMITS_NOTE}` });
   if (closeRefusal) list.push({ route: 'none', code: closeRefusal.code, message: closeRefusal.message, ...(closeRefusal.bug ? { bug: closeRefusal.bug } : {}) });
   else list.push({ route: 'close', message: CLOSE_ROUTE });
 
   return { list, ownerUnavailable: blocked?.reason ?? null };
 }
 
-function describe(id, value, { list, ownerUnavailable }, { provisional = false } = {}) {
+function describe(id, value, { list, ownerUnavailable }) {
   const verb = value.outcome === UNAUTHENTICATED ? 'unauthenticated (its evidence could not be authenticated)' : value.outcome;
   const causes = value.causes.map(entry => entry.message).join('; ');
   const owner = ownerUnavailable && value.outcome === HELD ? ` No owner route: ${ownerUnavailable}.` : '';
   const named = list.map(entry => (entry.route === 'none' ? `none until ${entry.code} is resolved: ${entry.message}` : `${entry.route}: ${entry.message}`)).join('; ');
 
-  return `Delivery ${id} is ${verb}: ${causes}.${owner} Routes${provisional ? ' (provisional until the record is read in full)' : ''}: ${named || 'none'}.`;
+  return `Delivery ${id} is ${verb}: ${causes}.${owner} Routes: ${named || 'none'}.`;
 }
 
 // The status brief's reading of a judged delivery: its outcome, causes and routes, and its way forward, which is never null while it
@@ -119,21 +110,14 @@ function unreadableRefusal(error) {
   return { code: error.code, message: `${error.message}; close saves through the ordinary read, which needs every referenced evidence body, so this record has no administrative route in this release (tracked as the bug "${BUG}")`, bug: BUG };
 }
 
-
-// The routes that apply to a delivery together with the saved workers' close verdict that qualifies them, so every surface that names
-// routes and every close offer read one verdict: a held or unauthenticated delivery whose workers the shared adoption-eligibility check
-// refuses names that refusal in place of the close route. `verdict` is null for any other outcome. With `inspect: false`, as the
-// creation gate routes while it holds its transaction and the project mutex, no process is inspected: a saved worker that is active
-// or of uncertain termination stands in for the verdict's refusal, since close admits such a record only once that termination is proven.
-function routesFor(state, value, { current = false, now = Date.now(), dependencies = {}, inspect = true } = {}) {
-  let verdict = null;
-  if ([HELD, UNAUTHENTICATED].includes(value.outcome)) {
-    const active = inspect ? null : state.workers.find(require('./workers').workerIsActive);
-    verdict = inspect ? require('./close').closeVerdict(state, dependencies, value) : active ? { eligible: false, code: 'worker-activity-unknown', message: `Worker ${active?.id ?? '(malformed entry)'} is active or its termination is unproven; close admits the record once that termination is proven` } : { eligible: true };
-  }
+// The routes that apply to a delivery, which status alone computes, together with the saved workers' close verdict that qualifies them:
+// a held or unauthenticated delivery whose workers the shared adoption-eligibility check refuses names that refusal in place of the
+// close route. `verdict` is null for any other outcome.
+function routesFor(state, value, { current = false, dependencies = {} } = {}) {
+  const verdict = [HELD, UNAUTHENTICATED].includes(value.outcome) ? require('./close').closeVerdict(state, dependencies, value) : null;
   const closeRefusal = verdict && !verdict.eligible ? { code: verdict.code, message: verdict.message } : null;
 
-  return { routed: routes(state, value, { current, now, closeRefusal }), verdict };
+  return { routed: routes(state, value, { current, closeRefusal }), verdict };
 }
 
 // Opens the delivery store read-only, or returns null when it is absent.
@@ -148,12 +132,14 @@ function openStore(root) {
 
 // The creation gate's runtime pieces over one connection, loaded lazily since the gate requires this module.
 function context(db, root) {
-  const { schemaState } = require('./legacy-store');
+  const { requireAccountingTables, schemaState } = require('./legacy-store');
   const { ProgressStore } = require('./progress-store');
   const { ProvenanceStore } = require('./provenance-store');
   const accounting = new ProgressStore({ db, root, kind: 'delivery' });
+  const { tables } = schemaState(db);
+  requireAccountingTables(db, tables);
 
-  return { db, tables: schemaState(db).tables, accounting, provenance: new ProvenanceStore(accounting) };
+  return { db, tables, accounting, provenance: new ProvenanceStore(accounting) };
 }
 
 // The input a creation pass reserves up front for the selection: its current state and latest history row.
