@@ -345,5 +345,7 @@ test('the owner route depends only on the selection and a reopened task, names t
   assert.deepEqual(refused.list, [{ route: 'none', code: 'worker-activity-unknown', message: 'Fixture refusal' }]);
   assert.equal(outcomes.judgment([work(['closing']), outcomes.cause('evidence', null, 'Fixture evidence failure')]).outcome, 'unauthenticated');
   assert.equal(outcomes.judgment([outcomes.cause('bound', null, 'Fixture bound'), outcomes.cause('evidence', null, 'Fixture evidence failure')]).outcome, 'unavailable');
+  // A bound cause's recovery names the refusal close gives for it.
+  assert.match(outcomes.routes({}, outcomes.judgment([outcomes.cause('bound', null, 'Fixture bound')])).list[0].message, /close-judgment-unavailable/);
   assert.equal(outcomes.judgment([]).outcome, 'discharged');
 });
