@@ -424,7 +424,9 @@ function computeManifest(root, request, context, ownerAlive, { requireChoices = 
     }
   }
   const namedKeys = new Set(named.map(entryKey));
-  for (const entry of acknowledgedRecords) requireCondition(namedKeys.has(entryKey(entry)), 'migration-decision-unavailable', `acknowledgedRecords names ${entry.store} ${entry.id}, which the older-release guard does not name`);
+  // An acknowledgement for a store that could not be read cannot be checked; that store's own refusal already keeps the close from
+  // proceeding, so it is carried as given rather than refused as a decision error.
+  for (const entry of acknowledgedRecords) requireCondition(reads.get(entry.store)?.unreadable || namedKeys.has(entryKey(entry)), 'migration-decision-unavailable', `acknowledgedRecords names ${entry.store} ${entry.id}, which the older-release guard does not name`);
   const acknowledged = new Set(acknowledgedRecords.map(entryKey));
   for (const record of named) if (!acknowledged.has(entryKey(record))) refusals.push({ ...record, reason: `${record.status} ${record.store} record ${record.id} is bound to older release ${record.identity ?? 'unknown'} (${record.resourceMode}); include it, finish or retire it, or acknowledge it by name` });
   const sessions = context ? sessionFindings(root, context, ownerAlive) : { refusals: [{ reason: 'No admitted migration context: the older-release guard cannot read the release registry' }], warnings: [] };

@@ -532,6 +532,9 @@ test('a damaged store holding only a stopped delivery is refused at store level,
   const members = [{ store: 'delivery', id }];
   const manifest = closeManifest(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }] }, f.context, base);
   assert.deepEqual([manifest.ineligible[0].code, manifest.hash], ['migration-store-unavailable', null]);
+  // An acknowledgement the unreadable store cannot confirm is carried unchecked, so the store refusal still leads.
+  const acknowledged = closeManifest(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }], acknowledgedRecords: [{ store: 'delivery', id: randomUUID() }] }, f.context, base);
+  assert.deepEqual([acknowledged.ineligible[0].code, acknowledged.hash], ['migration-store-unavailable', null]);
   assert.throws(() => close(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }], manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'migration-store-unavailable' });
 });
 
