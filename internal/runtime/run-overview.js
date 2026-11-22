@@ -220,9 +220,10 @@ function readStore(root, definition, context, dependencies, result) {
   }
 }
 
-// Read-only summary of a project's open delivery runs and review contexts and its run stores' compaction state, for Ready. Only the
-// closing-outcome scan of complete deliveries reads history, artifacts and accounting tables, in a read-only transaction that writes
-// no verdict; a store it cannot read is listed as unavailable, never as empty, and a store-level scan shortfall is a notice.
+// Read-only summary of a project's open delivery runs and review contexts and its run stores' compaction state, for Ready. Apart from
+// the whole-store check, which reads a surviving accounting table when the other is missing, only the closing-outcome scan of complete
+// deliveries reads history, artifacts and accounting tables, in a read-only transaction that writes no verdict; a store it cannot read
+// is listed as unavailable, never as empty, and a store-level scan shortfall is a notice.
 function overview(root, { context = null, dependencies = {} } = {}) {
   const result = { records: [], compaction: [], unavailable: [], notices: [] };
   for (const definition of DEFINITIONS) readStore(root, definition, context, dependencies, result);
