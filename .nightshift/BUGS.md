@@ -539,6 +539,8 @@ Establish the cause from the failed attempt's evidence and make prompt delivery 
 
 A possibly related case was recorded at the user's inbox triage of 2026-11-19 to 20, from item 5 of the maintainer inbox report `2026-11-19-closing-review-probe-and-revision-races.md`, which gives the matching diagnostic but neither the host nor the three-second stdin warning: in Hermes delivery `2b1f0df2` on 3.3.40 a skeptic launch failed with "Input must be provided either through stdin" and left an `unverified` worker that held `complete` with `active-workers` until the controller inspected the processes and recorded `worker-finished`.
 
+It recurred in this repository's delivery`e3ad3279-9d50-4a4f-97c0-8d82790d76ba` on 2026-11-22, recorded at its follow-up triage on 2026-11-23, on Claude Code 2.1.330: two consecutive Claude-host skeptic dispatches for one finding failed with the same three-second stdin warning and "Input must be provided either through stdin or as a prompt argument when using --print", the first `termination-unverified` and the second `unusable-review`, about an hour after an identical dispatch had worked, so an immediate retry was no remedy there; the skeptic then ran on the Codex host. Three `unverified` skeptic workers, the two from this incident among them, held the session retrospective back with `closing-before-work` until the controller confirmed their runner processes had ended and recorded `worker-finished`. The maintainer inbox report `2026-11-20-claude-skeptic-host-no-stdin.md` describes back-to-back failures of the same kind in FeatherPod-Private after a reboot.
+
 **Requires:** none.
 
 ### An assessment left incomplete only for a probe needs another fresh assessment
