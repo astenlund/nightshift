@@ -195,13 +195,13 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 28828,
-      "sha256": "fe533ef027b5b4de51c732151749a9996039ae3d7c63d0be056b029d417bf23f"
+      "bytes": 29001,
+      "sha256": "fb4dd2d87792cfe8caaf96b62b0f872d85742ce899308f3f4cffdcbd431dafd4"
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 39851,
-      "sha256": "40ba6eb97cb7b21105a11fec4cbcf6b71ce6df2a3d0ee6c0cb6876f6e0afe5d7"
+      "bytes": 40261,
+      "sha256": "0fd1e4b8370b9643c39afed72c22c7ec3527e61b53b3dd7903abcff6e94fcc37"
     },
     {
       "path": "internal/runtime/closing-hold.js",
@@ -315,8 +315,8 @@
     },
     {
       "path": "internal/runtime/legacy-store.js",
-      "bytes": 12564,
-      "sha256": "0a302f833ff71cc1eca96d17c3c5902cc9abdbfe06b84e2acd136b103faa3353"
+      "bytes": 13320,
+      "sha256": "5ac40c6b6572f83c2e05ecbd3720da4e8292dc60eb29dc6ebd0fa003d23b5420"
     },
     {
       "path": "internal/runtime/lifecycle.js",
@@ -440,8 +440,8 @@
     },
     {
       "path": "internal/runtime/run-overview.js",
-      "bytes": 13182,
-      "sha256": "0225e38b3db901dca84dec38ace0e4e804fb688d2d837b6efc4bb635d9a3c9e5"
+      "bytes": 13389,
+      "sha256": "06fc2c15f03727c5ff1e6369f90d1174aca601e1ac524db95a3bdd1f259295ef"
     },
     {
       "path": "internal/runtime/safe-directory.js",
