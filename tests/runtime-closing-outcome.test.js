@@ -325,6 +325,18 @@ test('the creation gate reuses a closed selection\'s close row as its latest row
   assert.equal(read(f.root).status, 'running');
 });
 
+test('with freshness verification skipped the brief of a complete delivery reads its closing outcome as reconcile at acceptance', async t => {
+  const f = project(t);
+  await completed(f.root);
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  const { obligationBrief } = require('../internal/runtime/lifecycle');
+  const state = read(f.root);
+  assert.equal(state.status, 'complete');
+  assert.equal(obligationBrief(state, f.root, { verifyFreshness: false }).handoverOutcome, 'reconcile at acceptance');
+  // Without a supplied outcome and with freshness verified, the brief leaves the field to status.
+  assert.equal(obligationBrief(state, f.root).handoverOutcome, undefined);
+});
+
 test('the owner route depends only on the selection and a reopened task, names the work its causes need and notes the limits', () => {
   const work = (needs, concern = 'check') => ({ kind: 'work', concern, subject: 'x', message: 'Fixture cause', needs });
   const past = new Date(Date.now() - 60000).toISOString();
