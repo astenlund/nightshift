@@ -225,8 +225,8 @@
     },
     {
       "path": "internal/runtime/creation-consistency.js",
-      "bytes": 44467,
-      "sha256": "5421988ee24c825b315ef483f5388bf2c8359ddcb0bc8c90e16cf4146037ae8a"
+      "bytes": 44634,
+      "sha256": "e36368cd79e6058f1b183344771e04279d7486f6ad2f358d2de8a15691372ff1"
     },
     {
       "path": "internal/runtime/delivery-acceptance.js",
