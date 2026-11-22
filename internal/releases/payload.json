@@ -235,8 +235,8 @@
     },
     {
       "path": "internal/runtime/delivery-outcome.js",
-      "bytes": 17789,
-      "sha256": "cf472f2f47d22f5daab930051e0f25c7e42844e70415066d50733f17efbad9f8"
+      "bytes": 17821,
+      "sha256": "508c12103635f021dbea17c10e1a02995db1faa62ae2b9cb37bfa0455e238303"
     },
     {
       "path": "internal/runtime/discharge.js",
