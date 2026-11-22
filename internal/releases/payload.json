@@ -200,8 +200,8 @@
     },
     {
       "path": "internal/runtime/close.js",
-      "bytes": 40261,
-      "sha256": "0fd1e4b8370b9643c39afed72c22c7ec3527e61b53b3dd7903abcff6e94fcc37"
+      "bytes": 40515,
+      "sha256": "400d9c6941c79310cee73e491d07c817a90c84f4bdcc766314deec1f54079364"
     },
     {
       "path": "internal/runtime/closing-hold.js",
@@ -440,8 +440,8 @@
     },
     {
       "path": "internal/runtime/run-overview.js",
-      "bytes": 13389,
-      "sha256": "06fc2c15f03727c5ff1e6369f90d1174aca601e1ac524db95a3bdd1f259295ef"
+      "bytes": 13436,
+      "sha256": "8bed523f764fd6f7610574d81c14a6d204517ba0aa66ed106eaf5330d9b02dbf"
     },
     {
       "path": "internal/runtime/safe-directory.js",
