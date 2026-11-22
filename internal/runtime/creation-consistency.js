@@ -334,7 +334,6 @@ function assessment(store, options = {}) {
   // accounting is current, which with a validated retirement is what a verdict may vouch for.
   const judge = row => {
     const mandatory = row.id === selectedId;
-    if (mandatory && selectionOverBound) return { id: row.id, state: { id: row.id, status: 'complete', workers: [] }, discharged: false, currentAccounting: false, outcome: outcomes.judgment([outcomes.cause('bound', null, overBound)]) };
     const stateText = store.db.prepare('SELECT state FROM runs WHERE id=?').get(row.id).state;
     const state = parse(stateText, mandatory);
     requireCondition(state?.schema === 1 && typeof state.id === 'string' && state.id.length > 0 && state.id === row.id && state.root === store.root && recordKind(state) === 'delivery' && state.revision === row.revision && Number.isSafeInteger(row.revision) && row.revision >= 0 && isRecordStatus(state.status) && ['claude', 'codex'].includes(state.controller?.host) && typeof state.controller.session === 'string' && state.controller.session.length > 0 && Array.isArray(state.tasks) && Array.isArray(state.workers), CODE, 'Delivery identity, shape or revision is unsupported');
@@ -477,7 +476,10 @@ function assessment(store, options = {}) {
 
     return refusal;
   };
+  // A selection over its reserved bound is established before any row is read, so every exit names it.
+  if (selectionOverBound) records.push({ id: selectedId, state: { id: selectedId, status: 'complete', workers: [] }, discharged: false, currentAccounting: false, outcome: outcomes.judgment([outcomes.cause('bound', null, overBound)]) });
   for (const row of rows) {
+    if (selectionOverBound && row.id === selectedId) continue;
     const verdict = saved?.byRun.get(row.id);
     const retirement = retiredById.get(row.id) ?? null;
     const metadata = verdict || writable ? verdicts.metadataOf(store.db, tables, row.id) : null;

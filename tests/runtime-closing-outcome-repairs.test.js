@@ -990,6 +990,24 @@ test('a complete selection over its reserved input bound is named unavailable by
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Delivery ${id} is unavailable.`));
 });
 
+test('a selection over its reserved bound is named even when an earlier record exhausts the shared allowance', async t => {
+  let f;
+  let selection;
+  for (let attempt = 0; attempt < 16 && !f; attempt++) {
+    const trial = project(t);
+    await completed(trial.root);
+    const earlier = read(trial.root).id;
+    await completed(trial.root);
+    // The gate judges in id order, so the unverdicted sibling must sort before the selection to run out first.
+    if (earlier < read(trial.root).id) [f, selection] = [trial, read(trial.root).id];
+  }
+  assert.ok(f, 'No fixture ordered its records as the case needs');
+  const saved = BOUNDS.input;
+  t.after(() => { BOUNDS.input = saved; });
+  BOUNDS.input = 1;
+  await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && /input exceeds its byte bound/.test(error.message) && error.message.includes(`Delivery ${selection} is unavailable.`));
+});
+
 test('an exact replay beside a held delivery refuses as overlap even while the selection owes its report', async t => {
   const f = project(t);
   await completed(f.root);
