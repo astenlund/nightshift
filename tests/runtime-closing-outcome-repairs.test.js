@@ -538,6 +538,27 @@ test('a damaged store holding only a stopped delivery is refused at store level,
   assert.throws(() => close(f.root, { members, choices: [{ store: 'delivery', id, report: { kind: 'none' }, followups: [] }], manifestHash: 'a'.repeat(64), authority: 'Yes, close it', reason: 'Settled', actor: closer }, f.context, base), { code: 'migration-store-unavailable' });
 });
 
+test('status reports an unauthenticated and an unavailable outcome on nonselected deliveries', async t => {
+  const f = project(t);
+  await completed(f.root);
+  const unauthenticated = read(f.root).id;
+  await completed(f.root);
+  const unavailable = read(f.root).id;
+  await completed(f.root);
+  const selection = read(f.root).id;
+  // A closing record replaced after completion is an evidence failure; a lost current accounting row makes the judgment unavailable.
+  select(f.root, unauthenticated);
+  withStore(f.root, store => store.update(owner, store.read().revision, 'fixture-closing-replacement', state => { state.closing.docs = { ...state.closing.docs, occurrence: randomUUID() }; }));
+  select(f.root, selection);
+  const lost = withStore(f.root, store => store.read(unavailable));
+  withStore(f.root, store => store.db.prepare('DELETE FROM accounting_commits WHERE run_id=? AND revision=?').run(unavailable, lost.revision));
+  const first = (await status(f.root, unauthenticated)).handoverOutcome;
+  assert.equal(first.outcome, 'unauthenticated');
+  assert.ok(first.routes.every(entry => entry.route !== 'owner'));
+  const second = (await status(f.root, unavailable)).handoverOutcome;
+  assert.deepEqual([second.outcome, second.routes.map(entry => entry.route)], ['unavailable', ['recovery']]);
+});
+
 test('a stored row revision that contradicts its state reads unavailable on Ready', async t => {
   const f = project(t);
   await completed(f.root);
