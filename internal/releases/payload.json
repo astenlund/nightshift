@@ -170,8 +170,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 194328,
-      "sha256": "ae901dd1b6ccd421e2af62a48fb248ac4493af69f6465effa4f77ab199be70a1"
+      "bytes": 194465,
+      "sha256": "c8fc9a2bdbd7fe0f4da2fcfc2eb774a8ea4f47cbdcdc5585bff1f89e63b18b1e"
     },
     {
       "path": "internal/runtime/actions.js",
