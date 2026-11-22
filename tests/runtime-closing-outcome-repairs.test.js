@@ -814,13 +814,16 @@ test('an undischarged nonselected stopped delivery is named by its status, point
   const f = project(t);
   await completed(f.root);
   const stopped = read(f.root).id;
-  await completed(f.root);
+  const original = await completed(f.root);
   const selection = read(f.root).id;
   select(f.root, stopped);
   await closingCheck(f.root, 'post-completion tracking check', failing);
   await execute(f.root, { action: 'stop', actor: owner, revision: read(f.root).revision, kind: 'user-stop', reason: 'Fixture stop after a failed closing check' }, base);
   select(f.root, selection);
   await assert.rejects(execute(f.root, reflection(), base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Delivery ${stopped} (stopped) has unresolved`) && /close-manifest/.test(error.message) && !/post-completion tracking check/.test(error.message));
+  // Held as well, the selection no longer refuses its own exact replay, but the stopped delivery still does, under its own code.
+  await closingCheck(f.root, 'post-completion tracking check', failing);
+  await assert.rejects(execute(f.root, original, base), error => error.code === 'delivery-consistency-unavailable' && error.message.includes(`Delivery ${stopped} (stopped) has unresolved`) && error.message.includes(`Delivery ${selection} is held.`));
 });
 
 test('a nonselected delivery a current verdict vouches for reads discharged on status, Ready and close-manifest alike', async t => {
