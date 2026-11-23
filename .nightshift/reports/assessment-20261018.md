@@ -1,5 +1,7 @@
 Independent assessment, checked by six further reviewers
 
+Note of 2026-11-23: this page is a dated report and is not kept current. [The assessment worklist](assessment-worklist-20261018.md) holds the current sequence of steps, changed by the user that day, and a ninth fortnightly number.
+
 # Nightshift Assessment
 
 repo **astenlund/nightshift** commit **76c8654** plugin **3.3.12** date **2026-10-18**
