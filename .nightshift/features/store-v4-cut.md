@@ -22,6 +22,7 @@ A release that adds a dependency on a slated module records here what the cut mu
 - 2026-11-09, the user: `close`, `close-manifest` and `compact-history`, which today enter through `migration-cli.js` and `legacy-migration.js`, move to a small administrative entry that survives the cut, with the constants and table definitions they share with the legacy modules relocated. `store.js` imports its table definition from the same place.
 - 2026-11-09, the user: a run settled in a store older than v4 does not reopen across the cut, and a defect found in its work goes to a new run.
 - 2026-11-17, the user: the v4 delivery creation gate keeps the property [Settled-record verdicts at delivery creation](../specs/settled-record-verdicts.md) gives the current store, that its work follows what changed since it last ran rather than the project's whole history.
+- 2026-11-23, the user: step 3b of [the assessment worklist](../reports/assessment-worklist-20261018.md), the session-close sequence, acceptance of unmet obligations at the final gate and the intermediate stage barriers, follows this cut and is built on the v4 store.
 
 ## Open
 
