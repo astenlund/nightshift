@@ -680,7 +680,7 @@ Found on 2026-11-20 while drafting [the post-completion closing hold spec](specs
 
 Confirm whether each transition is reachable through the runtime CLI, find any caller that relies on it, and decide whether a complete record refuses `hold`, `stop` and `block` or the behavior is intended and documented. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-### Refuse a skeptic dispatch whose assigned ids name no finding of its target
+### Refuse a skeptic dispatch that names an id outside its target's findings
 
 Recorded at the user's follow-up triage of this repository's delivery`e3ad3279-9d50-4a4f-97c0-8d82790d76ba` on 2026-11-23. During its code review the controller dispatched skeptics with finding ids that each carried a trailing carriage return (jq output on Windows read with `mapfile`). The runtime admitted the dispatch, a full Claude skeptic ran, and its receipt's verdicts named no saved finding, so the receipt was unusable and the skeptics were dispatched again with clean ids. Whether `validate` would have refused that receipt was not tried. A sibling slip of dispatch shape is [Refuse a findings payload on a dispatch that is not a skeptic's](#refuse-a-findings-payload-on-a-dispatch-that-is-not-a-skeptics).
 
