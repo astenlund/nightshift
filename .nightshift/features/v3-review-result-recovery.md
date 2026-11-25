@@ -33,7 +33,7 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the correction prompt, the exact split of validation errors into correctable form faults, downgrade-only evidence gaps and uncorrectable failures, and the receipt fields in a concise governing spec in `.nightshift/specs`. The change alters the runtime's review dispatch, the runtime reference and the fixtures, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check of the correction turn on each host, which depends on host resume and on the model, and deterministic evidence only. Verify malformed formatting, each evidence gap, contradictory evidence, stale inputs and interrupted correction. Tracking and readiness do not authorize implementation.
+In a concise governing spec, settle which failures allow a formatting correction, which allow only an evidence downgrade, and which stop the attempt. The change alters the runtime's review dispatch, the runtime reference and the fixtures, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check of the correction turn on each host, which depends on host resume and on the model, and deterministic evidence only. Verify malformed formatting, each evidence gap, contradictory evidence, stale inputs and interrupted correction. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

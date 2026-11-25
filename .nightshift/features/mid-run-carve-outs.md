@@ -33,4 +33,4 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the carve-out request and what it records, the carved-out task state and how a live step is carved out of a task, the dependent-task rule, where parked work is recorded, and the morning report's wording in a concise governing spec in `.nightshift/specs`, including whether removing only a verification step makes earlier reviews stale. The change alters the runtime, its reference, the operating brief and the morning report, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check and deterministic evidence only. Tracking and readiness do not authorize implementation.
+In the governing spec, decide whether removing only a verification step makes earlier reviews stale. The change alters the runtime, its reference, the operating brief and the morning report, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check and deterministic evidence only. Tracking and readiness do not authorize implementation.

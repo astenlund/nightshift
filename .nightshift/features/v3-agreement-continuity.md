@@ -60,7 +60,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the kept accepted copy and where it lives, the judgment record and the dispatch refusal, the presentation operation, how a content-preserving move is recognized and how an index entry's boundaries bind its snapshot in a concise governing spec in `.nightshift/specs`. The change alters the runtime, its reference, the operating brief and revise-spec, so it rides with a plugin version increase. Verify qualified assent, unchanged commitments under representation-only edits, archival moves, repeated revisions and actual scope expansion. Tracking and readiness do not authorize implementation.
+Record the agreement-continuity rules and the evidence that distinguishes a compatible representation change from expanded scope in a concise governing spec. The change alters the runtime, its reference, the operating brief and revise-spec, so it rides with a plugin version increase. Verify qualified assent, unchanged commitments under representation-only edits, archival moves, repeated revisions and actual scope expansion. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

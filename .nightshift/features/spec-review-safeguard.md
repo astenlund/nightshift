@@ -91,4 +91,4 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the exact clause wording at each canonical home, the repair note's field, how the runtime marks the fresh pass after repairs and supplies the cumulative repair delta, and the coordinated repair statement in a concise governing spec in `.nightshift/specs`. The change alters the runtime's lens and continuation text, the `repair` operation, the operating brief and revise-spec, so it rides with a plugin version increase, and the start of the work decides the installed-host evidence as settled above. Tracking and readiness do not authorize implementation.
+Record the review and repair commitments, their canonical instruction homes and the acceptance evidence in a concise governing spec. The change alters the runtime's lens and continuation text, the `repair` operation, the operating brief and revise-spec, so it rides with a plugin version increase, and the start of the work decides the installed-host evidence as settled above. Tracking and readiness do not authorize implementation.

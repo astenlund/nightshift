@@ -40,7 +40,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Before implementation
 
-Run the Windows probe first, then settle the resolution points for each role, including trusted absolute paths for host-executed hook commands and their refresh when the interpreter changes, the identity recheck before launch, the named refusal and, if the probe confirms the defect, the boundary of the Git slice in a concise governing spec in `.nightshift/specs`. If the host-owned hook boundary cannot enforce the agreed check, present that limit for a user decision before claiming the contract is met. The change alters shipped runtime and setup code, so it rides with a plugin version increase. Tracking and readiness do not authorize implementation.
+Run the Windows probe first. In the governing spec, settle the hook interpreter's trust and update boundary and, if the probe reproduces the defect, the scope of the first Git slice. If the host-owned hook boundary cannot enforce the agreed check, present that limit for a user decision before claiming the contract is met. The change alters shipped runtime and setup code, so it rides with a plugin version increase. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

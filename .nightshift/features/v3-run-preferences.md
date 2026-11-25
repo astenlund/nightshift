@@ -48,7 +48,7 @@ Amended on 2026-10-16, when both quick wins shipped in 3.3.12, to reconcile the 
 
 ## Before implementation
 
-Settle the recorded preference form and where the runtime checks it, the token limit's grammar and the bound on unknown usage, the operation that changes a recorded limit, failed-attempt effort evidence, and the closing report's role table in a concise governing spec in `.nightshift/specs`. The change alters the runtime, its reference, the operating brief and the morning report, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check and deterministic evidence only. Verify continuation of recorded preferences across compaction, adoption and resume, allowed substitution, an unavailable required model, delayed and unknown usage, real exhaustion, and a limit raised on a stopped run. Tracking and readiness do not authorize implementation.
+For the applicable slice, settle how unknown usage is bounded and how a failed attempt retains selected effort and any effective effort the host confirmed. The change alters the runtime, its reference, the operating brief and the morning report, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check and deterministic evidence only. Verify continuation of recorded preferences across compaction, adoption and resume, allowed substitution, an unavailable required model, delayed and unknown usage, real exhaustion, and a limit raised on a stopped run. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

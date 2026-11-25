@@ -45,7 +45,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the bounded reader's interface and limits for the Windows runner, runtime Claude and Codex event streams, and retained-release Codex and Claude control streams, the per-line bounds and their observed bases, and the boundary of the runner's protocol module in a concise governing spec in `.nightshift/specs`. Verify malformed and partial frames, oversized lines refused before full buffering, chunk-boundary and multi-byte splits, aggregate and per-line failures, retained-release error and cleanup behavior, timeout replacement, completion and cancellation, stale callbacks and process-tree closure. Tracking and readiness do not authorize implementation.
+Set the transport limits in a concise governing spec and document the observations and margin behind each host's per-line limit. Verify malformed and partial frames, oversized lines refused before full buffering, chunk-boundary and multi-byte splits, aggregate and per-line failures, retained-release error and cleanup behavior, timeout replacement, completion and cancellation, stale callbacks and process-tree closure. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

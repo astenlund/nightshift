@@ -50,4 +50,4 @@ Reported to the maintainer inbox on 2026-10-11 from `C:/Git/disco-elysium-compan
 
 ## Before implementation
 
-The change adds peer-shaped dispatch, peer worker records linked to their lead and a resumed-lead integration step to the runtime, and changes the lead and peer prompts, so it needs a concise governing spec, a plugin version increase, and a decision at the start of the work, for each host, between a budgeted installed-host check and deterministic evidence only with the model-owned behavior marked unverified. Tracking and readiness do not authorize implementation.
+Peer assignments must remain attributable to their lead, whose resumed assessment integrates their evidence. The change needs a concise governing spec, a plugin version increase, and a decision at the start of the work, for each host, between a budgeted installed-host check and deterministic evidence only with the model-owned behavior marked unverified. Tracking and readiness do not authorize implementation.

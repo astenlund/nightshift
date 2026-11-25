@@ -58,7 +58,7 @@ The user agreed these answers on 2026-10-05, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the projected acknowledgement's form, how a finding records the paths it concerns, the size bound, the note operation and the focused-status rule in a concise governing spec in `.nightshift/specs`. The change alters the runtime's review dispatch, its records and the focused status, the operating brief and revise-code, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check of reviewer behavior under projected acknowledgements and deterministic evidence only. Verify a settled decision across an unrelated edit, a change to its paths reopening it, new evidence reopening it, and unresolved obligations surviving compaction. Tracking and readiness do not authorize implementation.
+In the governing spec, settle the size bound for acknowledgements and when full evidence must accompany a summary. The change alters the runtime's review dispatch, its records and the focused status, the operating brief and revise-code, so it rides with a plugin version increase, and the start of the work decides between a budgeted installed-host check of reviewer behavior under projected acknowledgements and deterministic evidence only. Verify a settled decision across an unrelated edit, a change to its paths reopening it, new evidence reopening it, and unresolved obligations surviving compaction. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

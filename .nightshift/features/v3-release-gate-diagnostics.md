@@ -30,7 +30,7 @@ The user agreed these answers on 2026-10-04, when the entry graduated from Explo
 
 ## Before implementation
 
-The change is repository tooling and tests, outside the shipped plugin, so it needs no plugin version increase, and an agreed readback is enough. Fixtures in `tests/release-gate.test.js` cover a genuine decrease, a stale branch with and without shipped changes, a missing baseline on the CI path, and shallow history without a merge base, beside the existing cases. Tracking and readiness do not authorize implementation.
+The change is repository tooling and tests, outside the shipped plugin, so it needs no plugin version increase, and an agreed readback is enough. Deterministic fixtures cover a genuine decrease, a stale branch with and without shipped changes, a missing baseline on the CI path, and shallow history without a merge base, beside the existing cases. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

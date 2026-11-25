@@ -54,7 +54,7 @@ The user agreed these answers on 2026-10-13, when the entry graduated from Explo
 
 ## Before implementation
 
-Settle the discovery inputs Codex reports and how they are read, the traversal limits and order, the exclusion report, the conflict question and the unresolved-reference report in a concise governing spec in `.nightshift/specs`. The change alters setup, init-backlog and its inspection result, so it rides with a plugin version increase. Tracking and readiness do not authorize implementation.
+In a concise governing spec, settle the discovery bounds and ordering that make inspection repeatable for the same repository and captured host inputs. The change alters setup, init-backlog and its inspection result, so it rides with a plugin version increase. Tracking and readiness do not authorize implementation.
 
 ## Triage and provenance
 

@@ -48,6 +48,6 @@ The user agreed these answers on 2026-10-03, when the entry graduated from Explo
 
 ## Before implementation
 
-The change is shipped guidance in the operating brief and possibly a line in revise-spec and revise-code, so it rides with a plugin version increase, and effort is translated into supported host settings then. Reviewer choice is model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.
+The change is shipped guidance in the operating brief, so it rides with a plugin version increase, and effort is translated into supported host settings then. Reviewer choice is model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.
 
 The broader [structured model teams](structured-model-teams.md) proposal remains separate. This policy can be considered without adopting a fixed controller/implementer team arrangement.

@@ -37,4 +37,4 @@ The user agreed the answers below on 2026-10-03, when the entry graduated from E
 
 ## Before implementation
 
-The change is shipped text in the Ready skill's recommendation rule, so it rides with a plugin version increase. What Ready recommends is model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.
+The change affects Ready's shipped recommendation guidance, so it rides with a plugin version increase. What Ready recommends is model-owned behavior, so the start of the work decides between a budgeted installed-host check and deterministic evidence only with that behavior marked unverified. Tracking and readiness do not authorize implementation.
