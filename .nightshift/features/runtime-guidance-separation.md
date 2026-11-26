@@ -24,4 +24,4 @@ Handover and the four revise skills link to [the operating brief](../../internal
 
 - The change touches every public skill and all three shared files, so it needs a concise governing spec in `.nightshift/specs` with independent spec review before code, and a plugin version increase.
 - It changes model-owned behavior on both hosts, so at start the user decides between a budgeted installed-host campaign and deterministic evidence only with the model-owned behavior marked unverified.
-- No dependency blocks it. Coordinate with the [shared BACKLOG.md meta-index](backlog-meta-index.md), which moves shared guidance in the opposite direction.
+- No dependency blocks it. Coordinate with [Give shared backlog conventions one home](backlog-meta-index.md), which gathers repeated backlog guidance into one home, a project-local `BACKLOG.md` or a reference shipped with the plugin, while this feature splits shared files apart.
