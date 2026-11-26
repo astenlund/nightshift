@@ -4,6 +4,12 @@ Release notes for the Nightshift plugin, newest first. The plugin manifests carr
 
 The entries through 3.3.3 were moved here from the README on 2026-10-05 and split by version. A version without an entry had no notes recorded there.
 
+## 3.3.44
+
+- The init-backlog templates now carry the backlog conventions this repository's own instructions held, some of them also stated in the exploring and init-backlog skills: retired features, bugs and quick wins go to their history files marked as retired, with the reason, never as shipped or fixed; index summaries stay consistent with their records; sibling features that duplicate a shared concern get an umbrella record; dependencies are declared in the indexes, never in breakout files; `/nightshift:ready` runs after an entry moves to its history file; an Exploring draft graduates only once the user agrees its commitments are settled; and a hard-wrapped file is repaired with the targeted unwrap the init-backlog skill describes, after which the repair's diff is inspected and ready runs again.
+- The templates also add two rules of their own: a retired entry satisfies no dependency, so each reference to it is re-decided for its dependent instead of being dropped as satisfied; and a slice dropped before it ships is never struck through, its feature re-sliced so every remaining slice states what it still needs.
+- The superseded template text is listed as retired guidance, so in a project that still holds it and has not chosen to keep it, setup inspect reports it as retired and, where the new text is missing, lists it among the candidates the new text can replace. Template text only; no runtime, parser or setup code changed.
+
 ## 3.3.43
 
 - Establish a [project review model](.nightshift/specs/review-model.md) for Nightshift. Setup seeds a user-editable `.nightshift/REVIEW.md`, preserves project changes, and offers an approved interactive merge for divergent template updates. An approved mid-run amendment can replace or clear a task override. Reviews record the effective model and work-specific overrides. Findings outside the effective scope are advisory, subject to accepted commitments. The seeded-defect suite can compare steering and recall with and without the model.

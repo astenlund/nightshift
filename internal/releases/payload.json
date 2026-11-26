@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.43",
+  "version": "3.3.44",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "a58dba266c3738e88c003291db3b783a4a082aea79bf7bccf05e0a9bb523bff8"
+      "sha256": "030922725f717e7535f9065dbb714d5f502417c9a41f27f7e1f03971979d9c22"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "d78f68a78d5bb9112cb6cd7f5103d9104c821fc26b3414f718ca4a273d1327a3"
+      "sha256": "cb066eba113264a7fd84e30cfa11a67a9739dc345415be2d4dea0e3d03e40f29"
     },
     {
       "path": "LICENSE",
@@ -615,43 +615,43 @@
     },
     {
       "path": "skills/init-backlog/retired-guidance.json",
-      "bytes": 3560,
-      "sha256": "7d58496d24ab7edf6039a8531ee4341ccd719095db3349d80ccab4fa955fe37a"
+      "bytes": 6448,
+      "sha256": "09eba0b5b08082ebafd0e72fc913c3fbf2ef346a545bd25ec9a63e1d4b2e2e14"
     },
     {
       "path": "skills/init-backlog/templates/bugs-history.md",
-      "bytes": 995,
-      "sha256": "a59f72cfda1f18c4a49cbded672985f8b1ee12c2b78689b9740c7be2b13a497e"
+      "bytes": 1076,
+      "sha256": "3fef1563500640a7cbe08833b1a2f35f13485e03f55030bb3e3851d91c48e178"
     },
     {
       "path": "skills/init-backlog/templates/bugs.md",
-      "bytes": 5166,
-      "sha256": "b0873c711228de877ebaec1040b0cc3c9a695570f9aaa01962e60630cbbe14ab"
+      "bytes": 5917,
+      "sha256": "bd4cbbe24067bc000769d2f5af00a223ac173724043f3813f9bcf0b4b8c20497"
     },
     {
       "path": "skills/init-backlog/templates/features-history.md",
-      "bytes": 1420,
-      "sha256": "060ce118e61af134c77a844c998e2d142989316e257cf8125da2f9b4ea60d405"
+      "bytes": 1668,
+      "sha256": "113680a576f63987656b1fdc2635ac226817da5577049e1dfc7b8ccd79ec3bc0"
     },
     {
       "path": "skills/init-backlog/templates/features.md",
-      "bytes": 14675,
-      "sha256": "4d26fac99b44b32e5d3fa6fe4aa9511789a7b58cbf1dee3cb6d2caf43359a614"
+      "bytes": 17903,
+      "sha256": "6b2afc815012a1f8e5d4710d13f352dfe3c86bed55de4ec9373c6ead725a08b2"
     },
     {
       "path": "skills/init-backlog/templates/patterns.md",
-      "bytes": 1752,
-      "sha256": "a143c06a34cae70684f0db669ac68ea68d286a25290576c5d6baae1e3a23b241"
+      "bytes": 2127,
+      "sha256": "0f8756b03708890add2d7471a5e6cbb1c254cffa5f01581931bf47add7ac32df"
     },
     {
       "path": "skills/init-backlog/templates/quick-wins-history.md",
-      "bytes": 1452,
-      "sha256": "0b05063681f1a3dcf43ed72a9cb4bb3633a6c8de9a3e530cde02de55db387f3e"
+      "bytes": 1577,
+      "sha256": "cad94f4fcd8b0ecbb86c8b28f618a03c4ced95b3ea2c0fc2cd8171d069f6e080"
     },
     {
       "path": "skills/init-backlog/templates/quick-wins.md",
-      "bytes": 4004,
-      "sha256": "57da1c1677d2ef8176567afd4c157e3f4b0d708cdf3be85810d7afa07cd89451"
+      "bytes": 4479,
+      "sha256": "0ae46da6c0b59885cc155c78478723d99c307522b11b5a6de8dce4bc41adfb10"
     },
     {
       "path": "skills/init-backlog/templates/review.md",
