@@ -4,6 +4,7 @@ const { requireCondition } = require('./errors');
 const { applicability } = require('./applicability');
 const { fileIdentity, fresh, hash, projectFile, relativeParts } = require('./evidence');
 const { isReviewContext } = require('./records');
+const { captureReviewModel, usesDefaultReviewModel } = require('./review-model');
 
 // A code task's link to its governing spec task. add-spec-review records it beside the agreement, so recording it never stales the
 // validations and assessments that bind the agreement; handover and earlier records keep it inside the agreement. The value beside
@@ -189,11 +190,25 @@ function reviewedSnapshot(root, task) {
   if (!evidence) return 'missing';
   if (!Array.isArray(evidence.files) || evidence.files.length !== 1 || evidence.files[0]?.path !== task.agreement.spec || typeof evidence.files[0].sha256 !== 'string' || hash(JSON.stringify(evidence.files)) !== evidence.digest) return 'malformed';
 
-  return fresh(root, evidence) ? 'current' : 'stale';
+  if (!fresh(root, evidence)) return 'stale';
+  const policy = task.agreement.specReviewModelSha256;
+  if (policy === null) return 'model-missing';
+  try {
+    const current = captureReviewModel(root, [task]);
+    if (policy === undefined) return current.scopes[0].override === null && usesDefaultReviewModel(current) ? 'current' : 'model-missing';
+
+    return policy === current.scopes[0].sha256 ? 'current' : 'model-stale';
+  } catch {
+    return 'model-stale';
+  }
+}
+
+function governedBy(tasks, resolved, specId) {
+  return tasks.filter(candidate => resolved.get(candidate.id)?.specTask?.id === specId);
 }
 
 function noRoute(snapshot, entry) {
-  const reviewed = { none: 'no reviewed snapshot', missing: 'a missing reviewed snapshot', malformed: 'a malformed reviewed snapshot', stale: 'a stale reviewed snapshot' }[snapshot];
+  const reviewed = { none: 'no reviewed snapshot', missing: 'a missing reviewed snapshot', malformed: 'a malformed reviewed snapshot', stale: 'a stale reviewed snapshot', 'model-missing': 'a reviewed snapshot without its originating review model identity', 'model-stale': 'a reviewed snapshot bound to a changed or unreadable review model' }[snapshot];
   const queued = entry.queued.length > 1 ? `several queued spec tasks over this spec (${entry.queued.join(', ')})` : 'no queued spec task over this spec';
   const excluded = entry.excluded.map(item => `${item.id}, excluded because it ${item.reason === 'cycle' ? 'lies on a cycle of requires and governance edges with this task' : 'requires this task'}`);
 
@@ -218,6 +233,10 @@ function specTaskReadiness(state, spec, task, resolved) {
   const review = entry?.review;
   const freshAssessment = `Obtain a fresh independent spec assessment of ${spec.id}`;
   if (!lifecycle.completeAssessment(review)) return unready(spec.id, `spec task ${spec.id} has no complete independent spec assessment`, freshAssessment);
+  const override = task.agreement.reviewModelOverride;
+  if (override !== undefined && review.reviewModel?.current?.scopes?.find(scope => scope.taskId === task.id)?.override !== override) {
+    return unready(spec.id, `the assessment of ${spec.id} does not cover ${task.id}'s approved review model override`, freshAssessment);
+  }
   const missing = lifecycle.DIMENSIONS.spec.filter(dimension => !(Array.isArray(review.dimensions) && review.dimensions.includes(dimension)));
   if (missing.length > 0) return unready(spec.id, `the assessment of ${spec.id} is missing the dimensions ${missing.join(', ')}`, freshAssessment);
   if (!lifecycle.acceptableAssessment(review, spec)) {
@@ -232,7 +251,7 @@ function specTaskReadiness(state, spec, task, resolved) {
   const registered = worker?.registeredRevision;
   const assessedAt = !worker ? review.revision ?? -1 : Number.isSafeInteger(registered) ? Math.min(registered, review.revision ?? registered) : -1;
   // Every code task this spec task governs shares its assessment, so an amendment to any of them holds them all, as reopening would.
-  const governed = state.tasks.filter(candidate => candidate.id === task.id || resolved.get(candidate.id)?.specTask?.id === spec.id);
+  const governed = governedBy(state.tasks, resolved, spec.id);
   const amended = governed.filter(candidate => candidate.requirementsRevision !== undefined && assessedAt < candidate.requirementsRevision);
   if (amended.length > 0) {
     return unready(spec.id, `the assessment of ${spec.id} predates the amendment of ${amended.map(candidate => `${candidate.id} at revision ${candidate.requirementsRevision}`).join(', ')}`, freshAssessment);
@@ -309,4 +328,4 @@ function specReadinessStatus(state, options, acceptance) {
   return state.tasks.filter(task => task.kind === 'code' && Object.hasOwn(task.agreement ?? {}, 'spec')).map(task => ({ taskId: task.id, ...specReadiness(state, task, resolved), specAcceptance: acceptance(task) }));
 }
 
-module.exports = { assertHandoverGovernance, linkValues, requireSpecReadiness, resolveGovernance, samePath, specLink, specReadiness, specReadinessStatus, usableSpec };
+module.exports = { assertHandoverGovernance, governedBy, linkValues, requireSpecReadiness, resolveGovernance, samePath, specLink, specReadiness, specReadinessStatus, usableSpec };

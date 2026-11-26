@@ -16,6 +16,7 @@ const SCRIPT_NAME = path.basename(__filename, '.js');
 
 const CODE_DIMENSIONS = Object.freeze(['requirements-ux', 'correctness-integration', 'security-data-safety', 'design-maintainability', 'performance-resources', 'tests-evidence']);
 const SEVERITIES = Object.freeze(['critical', 'important', 'minor']);
+const FIGURE_KEYS = Object.freeze(['detection', 'postSkepticRecall', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'overreach', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture']);
 const CONTAMINATION_TOKENS = Object.freeze(['seeded-defects', 'fixture.json']);
 const HIDDEN_PREFIXES = Object.freeze(['.nightshift/runs/', '.nightshift/inbox/', '.tmp/']);
 const ADJUDICATED_ORIGIN = /^adjudicated:[^/\\]+$/;
@@ -400,8 +401,9 @@ function resumedManifest(options) {
   const manifest = readJson(path.join(options.out, 'manifest.json'));
   const selected = [...new Set(options.selected ?? [])].sort();
   const sameFixtures = selected.length ? !manifest.whole && JSON.stringify(manifest.fixtures) === JSON.stringify(selected) : manifest.whole;
-  const same = JSON.stringify(manifest.models) === JSON.stringify(options.models) && manifest.repeat === options.repeat && sameFixtures;
-  if (!same) fail('run-folder-mismatch', 'The run folder was started with other fixtures, models or repetitions; use a new run folder');
+  const same = JSON.stringify(manifest.models) === JSON.stringify(options.models) && manifest.repeat === options.repeat && sameFixtures &&
+    Boolean(manifest.reviewModel) === Boolean(options.reviewModel);
+  if (!same) fail('run-folder-mismatch', 'The run folder was started with other fixtures, models, repetitions or review model settings; use a new run folder');
   verifyFrozen(options.out, manifest);
 
   return manifest;
@@ -412,6 +414,7 @@ function resumedManifest(options) {
 function verifyFrozen(runFolder, manifest) {
   if (fixtureSetHash(runFolder, manifest.fixtures) !== manifest.fixtureSetHash) fail('run-folder-altered', `${runFolder}: the frozen fixtures no longer match the manifest's fixture set hash`);
   if (sha256(fs.readFileSync(path.join(runFolder, 'rules.md'))) !== manifest.rulesHash) fail('run-folder-altered', `${runFolder}: rules.md no longer matches the manifest's rules hash`);
+  if (manifest.reviewModel && sha256(manifest.reviewModel.text) !== manifest.reviewModel.sha256) fail('run-folder-altered', `${runFolder}: the review model no longer matches its recorded hash`);
 }
 
 // Copies the selected fixtures and rules.md into a new run folder and writes its manifest.
@@ -419,6 +422,7 @@ function prepareRunFolder(options, suite) {
   const manifestFile = path.join(options.out, 'manifest.json');
   for (const item of suite.fixtures) fs.cpSync(item.directory, frozenFixture(options.out, item.name), { recursive: true });
   fs.copyFileSync(options.rules, path.join(options.out, 'rules.md'));
+  const reviewModel = options.reviewModel ? require('../internal/review-model').bundledModel() : null;
   const manifest = {
     created: new Date().toISOString(),
     fixtures: suite.fixtures.map(item => item.name),
@@ -428,6 +432,7 @@ function prepareRunFolder(options, suite) {
     seed: options.seed ?? crypto.randomInt(1, 2 ** 31),
     fixtureSetHash: fixtureSetHash(options.out, suite.fixtures.map(item => item.name)),
     rulesHash: sha256(fs.readFileSync(path.join(options.out, 'rules.md'))),
+    ...(reviewModel ? { reviewModel: { text: reviewModel.text, sha256: sha256(reviewModel.text) } } : {}),
     hostVersions: Object.fromEntries([...new Set(options.models.flatMap(model => [model.host, model.skeptic?.host].filter(Boolean)))].map(host => [host, options.hostVersion(host)])),
   };
   writeJson(manifestFile, manifest);
@@ -621,9 +626,10 @@ function recordOutcome(paths, stage, intent, error, elapsedMs, identity, launche
   return record;
 }
 
-function stageOptions(stage, item, manifestRules, repository, model, requestId, claims, probeEvidence, onProcess) {
+function stageOptions(stage, item, manifestRules, repository, model, requestId, claims, probeEvidence, onProcess, reviewModel) {
   const candidate = evaluationFor(model, stage)?.gate ?? { host: model.host, model: model.id };
   const common = { id: requestId, baseSha: repository.baseSha, requirements: item.fixture.requirements, rules: manifestRules, candidates: [{ ...candidate, effort: EFFORT }], onProcess, kind: kindOf(stage) };
+  if (reviewModel) common.reviewModel = { current: { source: 'bundled', text: reviewModel.text, scopes: [] }, originals: [] };
   if (stage === 'skeptic') return { ...common, findings: claims.map(claim => claim.claim) };
 
   return probeEvidence ? { ...common, probeEvidence } : common;
@@ -735,7 +741,7 @@ async function dispatchStage(context, runItem, stage, claims) {
   let error = null;
   let launched = false;
   try {
-    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, rules, repository, model, requestId, claims, probes?.references, () => { launched = true; }), dispatchDependencies(dependencies, model, stage));
+    await dependencies.dispatchReview(repository.root, stageOptions(stage, runItem.fixture, rules, repository, model, requestId, claims, probes?.references, () => { launched = true; }, context.manifest.reviewModel), dispatchDependencies(dependencies, model, stage));
   } catch (caught) {
     error = caught;
   }
@@ -1161,6 +1167,7 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
   const pendingAdjudication = unmatched.filter(({ finding }) => !own[finding.id]).map(({ finding }) => finding.id);
   const attributed = new Map();
   const duplicates = new Set();
+  const reportsByEntry = new Map([...byEntry].map(([entryIndex, index]) => [entryIndex, [index]]));
   const realIds = new Set();
   for (const { finding, index } of unmatched) {
     const decision = own[finding.id];
@@ -1169,11 +1176,13 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
     if (decision.outcome === 'attributed') {
       const entryIndex = truth.findIndex(entry => entry.id === decision.entry);
       if (entryIndex < 0) fail('adjudication-invalid', `${runItem.key}: ${finding.id} is attributed to unknown entry ${decision.entry}`);
+      reportsByEntry.set(entryIndex, [...(reportsByEntry.get(entryIndex) ?? []), index]);
       if (!byEntry.has(entryIndex) && !attributed.has(entryIndex)) attributed.set(entryIndex, index);
       else duplicates.add(finding.id);
     }
   }
   const matchOf = entryIndex => byEntry.get(entryIndex) ?? attributed.get(entryIndex);
+  const anyReport = (entryIndex, predicate) => reportsByEntry.get(entryIndex)?.some(index => predicate(findings[index])) ?? false;
   const matchedFindingIndices = new Set([...byFinding.keys(), ...attributed.values()]);
   const skepticComplete = skepticRecord?.outcome === 'complete' && skepticRecord.reportStatus === 'complete';
   const skepticReceipt = skepticComplete ? readJson(path.join(paths.artifacts('skeptic'), 'receipt.json')) : null;
@@ -1215,11 +1224,13 @@ function gradeFixtureRun(runFolder, runItem, adjudications) {
     clean,
     planted: planted.length,
     detected: detected.length,
+    detectedAndConfirmed: detected.filter(({ entryIndex }) => anyReport(entryIndex, finding => verdictOf.get(`lead:${finding.id}`) === 'confirmed')).length,
     severityRight: severityRight.length,
     perDimension,
     outOfScope: outOfScope.length,
     outOfScopeMatched: outOfScope.filter(({ entryIndex }) => matchOf(entryIndex) !== undefined).length,
     outOfScopeRequiredFalse: outOfScope.filter(({ entryIndex }) => matchOf(entryIndex) !== undefined && findings[matchOf(entryIndex)].required === false).length,
+    outOfScopeRequired: outOfScope.filter(({ entryIndex }) => anyReport(entryIndex, finding => finding.required === true)).length,
     falseConfirmed,
     skepticComplete,
     skepticIncomplete,
@@ -1243,10 +1254,12 @@ function figures(graded) {
 
   return {
     detection: ratio(sum(done, 'detected'), sum(done, 'planted')),
+    postSkepticRecall: ratio(sum(verdicted, 'detectedAndConfirmed'), sum(verdicted, 'planted')),
     detectionByDimension: Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, ratio(done.reduce((total, item) => total + item.perDimension[dimension].detected, 0), done.reduce((total, item) => total + item.perDimension[dimension].planted, 0))])),
     cleanChangeFalsePositives: ratio(sum(cleanRuns, 'falseConfirmed'), cleanRuns.length),
     unmatchedConfirmations: ratio(sum(otherRuns, 'falseConfirmed'), otherRuns.length),
     outOfScope: { ...ratio(sum(done, 'outOfScopeMatched'), sum(done, 'outOfScope')), requiredFalse: sum(done, 'outOfScopeRequiredFalse') },
+    overreach: ratio(sum(done, 'outOfScopeRequired'), sum(done, 'outOfScope')),
     severityAccuracy: ratio(sum(done, 'severityRight'), sum(done, 'detected')),
     skepticAccuracy: ratio(sum(done.filter(item => item.skepticComplete), 'skepticAgree'), sum(done.filter(item => item.skepticComplete), 'skepticTotal')),
     tokensPerFixture: ratio(sum(known, 'tokens'), known.length),
@@ -1265,7 +1278,6 @@ function figures(graded) {
 
 // The range of each figure across repetitions, for every figure a comparison reports, detection per dimension included.
 function spread(groups) {
-  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture'];
   const range = values => {
     const known = values.filter(value => value !== null && value !== undefined);
 
@@ -1273,7 +1285,7 @@ function spread(groups) {
   };
 
   return {
-    ...Object.fromEntries(keys.map(key => [key, range(groups.map(group => group[key].value))])),
+    ...Object.fromEntries(FIGURE_KEYS.map(key => [key, range(groups.map(group => group[key].value))])),
     detectionByDimension: Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, range(groups.map(group => group.detectionByDimension[dimension].value))])),
   };
 }
@@ -1319,6 +1331,7 @@ function grade(runFolder, targetsFile = path.join(SUITE_ROOT, 'targets.json')) {
     whole: manifest.whole,
     fixtureSetHash: manifest.fixtureSetHash,
     rulesHash: manifest.rulesHash,
+    ...(manifest.reviewModel ? { reviewModelSha256: manifest.reviewModel.sha256 } : {}),
     // Grading reads only this file, so the launcher stays out of the grader's identity.
     graderHash: sha256(fs.readFileSync(__filename)),
     identities: [...new Map(identities.map(identity => [JSON.stringify(identity), identity])).values()],
@@ -1353,7 +1366,7 @@ function formatReport(report) {
   const lines = [`# Seeded-defect report`, '', `Graded ${report.graded}. Fixture set ${report.fixtureSetHash.slice(0, 12)}, rules ${report.rulesHash.slice(0, 12)}, grader ${report.graderHash.slice(0, 12)}.${report.whole ? '' : ' Subset run.'}${report.mixed ? ' Mixed run.' : ''}${report.pooled.provisional ? ' Provisional: some unmatched findings await adjudication.' : ''}`, ''];
   lines.push('| Figure | Pooled | ' + Object.keys(report.byModel).join(' | ') + ' |');
   lines.push('|---|---|' + Object.keys(report.byModel).map(() => '---|').join(''));
-  const rows = [['Detection', 'detection'], ['Clean-change false positives per clean fixture', 'cleanChangeFalsePositives'], ['Unmatched confirmations per other fixture', 'unmatchedConfirmations'], ['Out of scope raised', 'outOfScope'], ['Severity accuracy', 'severityAccuracy'], ['Skeptic accuracy', 'skepticAccuracy']];
+  const rows = [['Detection', 'detection'], ['Recall after skeptic validation', 'postSkepticRecall'], ['Clean-change false positives per clean fixture', 'cleanChangeFalsePositives'], ['Unmatched confirmations per other fixture', 'unmatchedConfirmations'], ['Out of scope raised', 'outOfScope'], ['Out of scope marked required', 'overreach'], ['Severity accuracy', 'severityAccuracy'], ['Skeptic accuracy', 'skepticAccuracy']];
   // The two false-positive figures are counts per fixture, not shares, so they print as plain numbers.
   const perFixtureKeys = new Set(['cleanChangeFalsePositives', 'unmatchedConfirmations']);
   const cell = (key, value) => perFixtureKeys.has(key) ? (value.value === null ? `n/a (${value.numerator}/${value.denominator})` : `${value.value.toFixed(2)} (${value.numerator}/${value.denominator})`) : formatRatio(value);
@@ -1409,6 +1422,7 @@ function compare(baselineFolder, laterFolder, targetsFile = path.join(SUITE_ROOT
   const varied = [];
   if (hashesOf(baseline, 'machinery') !== hashesOf(later, 'machinery')) varied.push('review machinery');
   if (baseline.rulesHash !== later.rulesHash) varied.push('conventions');
+  if (baseline.reviewModelSha256 !== later.reviewModelSha256) varied.push('review model');
   // The same models in another command-line order are the same models.
   if (JSON.stringify(Object.keys(baseline.byModel).sort()) !== JSON.stringify(Object.keys(later.byModel).sort())) varied.push('models');
   if (varied.length > 1) confounds.push(`more than one varied input (${varied.join(', ')})`);
@@ -1424,8 +1438,7 @@ function compare(baselineFolder, laterFolder, targetsFile = path.join(SUITE_ROOT
 
     return { baseline: before ?? null, later: after ?? null, change: delta, spread: spread ?? null, withinSpread: delta === null || !spread ? null : Math.abs(delta) <= spread.max - spread.min, target: target ?? null };
   };
-  const keys = ['detection', 'cleanChangeFalsePositives', 'unmatchedConfirmations', 'outOfScope', 'severityAccuracy', 'skepticAccuracy', 'tokensPerFixture', 'elapsedMsPerFixture'];
-  const changes = Object.fromEntries(keys.map(key => [key, change(baseline.pooled[key]?.value, later.pooled[key]?.value, baselineSpread[key], targets[key])]));
+  const changes = Object.fromEntries(FIGURE_KEYS.map(key => [key, change(baseline.pooled[key]?.value, later.pooled[key]?.value, baselineSpread[key], targets[key])]));
   const detectionByDimension = Object.fromEntries(CODE_DIMENSIONS.map(dimension => [dimension, change(baseline.pooled.detectionByDimension?.[dimension]?.value, later.pooled.detectionByDimension?.[dimension]?.value, baselineSpread.detectionByDimension?.[dimension])]));
 
   return { varied, confounded: confounds, provisional: baseline.pooled.provisional || later.pooled.provisional, informational, targets: { status: currentTargets.status, baseline: currentTargets.baseline ?? null }, changes, detectionByDimension };
@@ -1482,6 +1495,7 @@ function parseArguments(argv) {
     else if (argument === '--fixture') options.selected.push(valueOf());
     else if (argument === '--budget') options.budget = Number(valueOf());
     else if (argument === '--retry') options.retry = true;
+    else if (argument === '--review-model') options.reviewModel = true;
     else if (argument === '--termination-checked') options.terminationChecked = true;
     else if (argument === '--approve-probes') options.approveProbes.push(valueOf());
     else if (argument === '--decline-probes') options.declineProbes.push(valueOf());

@@ -1,6 +1,7 @@
 'use strict';
 
 const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -58,7 +59,7 @@ async function triagedRun(t) {
   store.create({
     mechanism: fixtureContinuation(), objective: 'Deliver the accepted change', authority: 'User agreed the scope', controller: actor, controllerClaim: fixtureControllerClaim(actor),
     tasks: [
-      { id: 'code', title: 'Implementation', agreement: { source: 'User', outcome: 'Implement the governed behavior', spec: SPEC, specReviewed: true } },
+      { id: 'code', title: 'Implementation', agreement: { source: 'User', outcome: 'Implement the governed behavior', spec: SPEC, specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } },
       { id: 'lessons', title: 'Lore', kind: 'lore', requires: ['code'], agreement: { source: 'User', outcome: 'Assessed instruction proposal' } },
     ],
   });

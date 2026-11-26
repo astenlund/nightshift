@@ -8,9 +8,9 @@ const LOCK_NAME = '.nightshift-unwrap-lock.sqlite';
 const MAX_LOCK_BYTES = 64 * 1024;
 const isLockName = name => process.platform === 'win32' ? name.toLowerCase() === LOCK_NAME : name === LOCK_NAME;
 
-function lockConfiguration({ name = LOCK_NAME, label = 'unwrap', codePrefix = 'unwrap' } = {}) {
+function lockConfiguration({ name = LOCK_NAME, label = 'unwrap', codePrefix = 'unwrap', allowRelocation = false } = {}) {
   if (typeof name !== 'string' || !/^[a-zA-Z0-9_.-]+$/.test(name) || ['.', '..'].includes(name) || typeof label !== 'string' || !label.trim() || typeof codePrefix !== 'string' || !/^[a-z][a-z-]*$/.test(codePrefix)) throw new Error('Invalid writer lock configuration');
-  return { name, label, codePrefix };
+  return { name, label, codePrefix, allowRelocation };
 }
 
 function lockError(file, cause, configuration) {
@@ -53,14 +53,29 @@ function inspectLock(parent, options = {}) {
     try { ownership = readOwnership(database); } finally { database.close(); }
     const after = stableOpenFile(parent, file, { requireSingleLink: true, maxBytes: MAX_LOCK_BYTES });
     if (snapshot.identity !== after.identity || snapshot.rawSha256 !== after.rawSha256 || parentIdentity(parent) !== parentId
-      || ownership.parent !== parent || ownership.parent_id !== parentId || ownership.file_id !== snapshot.identity) throw new Error('Lock ownership changed');
-    return { file, parent, parentId, ...snapshot };
+      || (!configuration.allowRelocation && ownership.parent !== parent) || ownership.parent_id !== parentId || ownership.file_id !== snapshot.identity) throw new Error('Lock ownership changed');
+    return { file, parent, parentId, ...snapshot, recordedParent: ownership.parent };
   } catch (cause) { throw lockError(file, cause, configuration); }
+}
+
+function initializeLock(DatabaseSync, parent, file, parentId) {
+  const descriptor = fs.openSync(file, 'wx', 0o600);
+  let identity;
+  try { identity = comparableIdentity(fs.fstatSync(descriptor, { bigint: true })); }
+  finally { fs.closeSync(descriptor); }
+  if (parentIdentity(parent) !== parentId || comparableIdentity(fs.lstatSync(file, { bigint: true })) !== identity) throw new Error('Lock changed during creation');
+  const database = new DatabaseSync(file);
+  try {
+    database.exec('PRAGMA journal_mode=MEMORY; PRAGMA synchronous=FULL; CREATE TABLE ownership (format INTEGER NOT NULL, parent TEXT NOT NULL, parent_id TEXT NOT NULL, file_id TEXT NOT NULL);');
+    database.prepare('INSERT INTO ownership VALUES (1, ?, ?, ?)').run(parent, parentId, identity);
+  } finally { database.close(); }
+  const handle = fs.openSync(file, 'r+');
+  try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
 }
 
 function acquireLock(parent, options = {}) {
   const { DatabaseSync } = require('node:sqlite');
-  const { create = true } = options;
+  const { create = true, publishNewLock } = options;
   const configuration = lockConfiguration(options);
   const file = path.join(parent, configuration.name);
   let database;
@@ -71,17 +86,8 @@ function acquireLock(parent, options = {}) {
     try { fs.lstatSync(file); } catch (error) { if (error.code !== 'ENOENT') throw error; exists = false; }
     if (!exists) {
       if (!create) return null;
-      const descriptor = fs.openSync(file, 'wx', 0o600);
-      const identity = comparableIdentity(fs.fstatSync(descriptor, { bigint: true }));
-      fs.closeSync(descriptor);
-      if (parentIdentity(parent) !== parentId || comparableIdentity(fs.lstatSync(file, { bigint: true })) !== identity) throw new Error('Lock changed during creation');
-      database = new DatabaseSync(file);
-      database.exec('PRAGMA journal_mode=MEMORY; PRAGMA synchronous=FULL; CREATE TABLE ownership (format INTEGER NOT NULL, parent TEXT NOT NULL, parent_id TEXT NOT NULL, file_id TEXT NOT NULL);');
-      database.prepare('INSERT INTO ownership VALUES (1, ?, ?, ?)').run(parent, parentId, identity);
-      database.close();
-      database = null;
-      const handle = fs.openSync(file, 'r+');
-      try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); }
+      if (publishNewLock) publishNewLock(staged => initializeLock(DatabaseSync, parent, staged, parentId));
+      else initializeLock(DatabaseSync, parent, file, parentId);
     }
     const snapshot = inspectLock(parent, configuration);
     database = new DatabaseSync(file);

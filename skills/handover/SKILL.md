@@ -11,6 +11,10 @@ For a direct request to migrate saved delivery records without schema-2 independ
 
 For an actual handover, use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before the delivery steps below.
 
+During scope investigation, use the project's `.nightshift/REVIEW.md` or the [bundled default](../init-backlog/templates/review.md) when the project file is absent. Propose only consequential work-specific overrides in the readback, giving their reason, and include the approved override in that task's agreement. Keep the project's file in the user's ownership. Provide the full default text on request.
+
+When using a pre-delivery spec assessment, carry its captured scope digest as `agreement.specReviewModelSha256`. If the assessment lacks that evidence, use a governing spec task to assess the work under the effective model.
+
 Read [the operating brief](../../internal/workflow.md) and [runtime interface](../../internal/runtime/REFERENCE.md). Handover is the sole entry creating a delivery run. Ordinary chat agreement proceeds directly; standalone revision uses a review context. Ready selection requests handover after investigation, and confirmation of its complete scope releases that request without another handover prompt. An explicit request for direct work or a pause takes precedence. Preserve confirmed commitments through compatible corrections and compaction; material changes require the user's decision.
 
 Accept once every queued item has its readback or governing-spec agreement and applicable assessment resolved, with consequential decisions, limits and publication authority settled. Until then preserve the request and present what remains; do not claim acceptance. Check actual state, resources and surviving activity. An unfinished delivery is resumed or explicitly adopted under its ownership and inactivity rules, or closed when the user considers it settled, never replaced. Ownership transfer does not authorize resumption or enlarge scope.

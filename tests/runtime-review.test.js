@@ -210,7 +210,9 @@ for (const owner of ['docs', 'code']) {
       { id: 'plan', title: 'Governing spec', kind: 'spec' },
       { id: 'lessons', title: 'Retrospective proposal', kind: 'lore' },
       { id: f.taskId, title: 'Current ' + owner, kind: owner },
-    ].map(task => ({ ...task, agreement: { source: 'User', outcome: task.title } }));
+    ].map(task => ({ ...task, agreement: { source: 'User', outcome: task.title, ...(task.id === 'finished' ? { reviewModelOverride: 'Cover imported handwritten records for this task.' } : {}) } }));
+    fs.mkdirSync(path.join(f.root, '.nightshift'), { recursive: true });
+    fs.writeFileSync(path.join(f.root, '.nightshift/REVIEW.md'), 'Project model for cumulative assessment.');
     store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks });
     store.update(actor, store.read().revision, 'fixture-completed-tasks', state => { for (const task of state.tasks) if (task.id !== f.taskId) task.status = 'complete'; });
     let requirements;
@@ -218,11 +220,145 @@ for (const owner of ['docs', 'code']) {
       const { receipt } = await executeWithFixtureController(f.root, { action: 'dispatch', actor, revision: store.read().revision, taskId: f.taskId, review: { ...f, kind: 'code' } }, { runAgent: options => { requirements = options.prompt; return mockAgent(options); } });
       assert.deepEqual([...receipt.coveredTaskIds].sort(), ['finished', f.taskId].sort());
       assert.deepEqual(Object.keys(receipt.commitments).sort(), ['finished', f.taskId].sort());
+      assert.equal(receipt.reviewModel.current.source, 'project');
+      assert.deepEqual(receipt.reviewModel.current.scopes.map(({ taskId, override }) => ({ taskId, override })), [{ taskId: 'finished', override: 'Cover imported handwritten records for this task.' }, { taskId: f.taskId, override: null }]);
+      assert.notEqual(receipt.reviewModel.current.scopes[0].sha256, receipt.reviewModel.current.scopes[1].sha256);
+      assert.match(requirements, /Project model for cumulative assessment/);
       assert.match(requirements, /Finished /);
       assert.doesNotMatch(requirements, /Governing spec|Retrospective proposal/);
     } finally { store.close(); }
   });
 }
+
+test('a clean lead loses coverage when its ignored project review model widens', async t => {
+  const f = fixture(t);
+  const model = path.join(f.root, '.nightshift/REVIEW.md');
+  fs.mkdirSync(path.dirname(model), { recursive: true });
+  const lf = String.fromCharCode(10);
+  fs.appendFileSync(path.join(f.root, '.git/info/exclude'), lf + '/.nightshift/REVIEW.md' + lf);
+  fs.writeFileSync(model, 'Review supported imports only.');
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const act = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
+  const current = () => { const state = store.read(); return reviewGate(f.root, state.tasks[0], state); };
+  try {
+    await act({ action: 'check', check: { name: 'Fixture verification', executable: process.execPath, args: ['--version'], paths: ['subject.txt'] } });
+    const lead = await act({ action: 'dispatch', review: { ...f, kind: 'code' } }, { runAgent: mockAgent });
+    await act({ action: 'review', receipt: path.relative(f.root, lead.receiptFile).split(path.sep).join('/') });
+    assert.equal(current(), true);
+    assert.equal(lead.receipt.snapshot.files.some(file => file.path === '.nightshift/REVIEW.md'), false);
+    fs.writeFileSync(model, 'Review supported imports including hand-edited inputs.');
+    assert.equal(current(), false);
+    fs.writeFileSync(model, 'Review supported imports only.');
+    assert.equal(current(), true);
+  } finally { store.close(); }
+});
+
+for (const shared of [false, true]) {
+  test(`governing spec dispatch includes all governed review model scopes with shared=${shared}`, async t => {
+    const f = fixture(t);
+    const spec = 'scope.md';
+    const nextSpec = shared ? 'shared-spec' : f.taskId + '-governing-spec';
+    fs.writeFileSync(path.join(f.root, spec), 'Agreed governing specification.');
+    const actor = { host: 'codex', session: 'controller' };
+    const override = 'Include restoration of hand-edited user records for this scope.';
+    const codeTask = id => ({ id, title: id, agreement: { source: 'User', outcome: 'Support ' + id, spec, reviewModelOverride: id === f.taskId ? override : 'Consider previous releases of the auxiliary data.' } });
+    const tasks = shared ? [{ id: nextSpec, title: 'Shared spec', kind: 'spec', agreement: { source: 'User', outcome: 'Review both tasks', spec } }, codeTask(f.taskId), codeTask('auxiliary')] : [codeTask(f.taskId)];
+    const store = new RunStore(f.root, { create: true });
+    store.create({ objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), mechanism: fixtureContinuation(), tasks });
+    const act = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: nextSpec, ...request }, overrides);
+    try {
+      if (!shared) await act({ action: 'add-spec-review', taskId: f.taskId });
+      let prompt;
+      const { receipt } = await act({ action: 'dispatch', review: { ...f, kind: 'spec' } }, { runAgent: options => {
+        prompt = options.prompt;
+        return mockAgent(options, DIMENSIONS.spec);
+      } });
+      const scopes = new Map(receipt.reviewModel.current.scopes.map(scope => [scope.taskId, scope.override]));
+      assert.equal(scopes.get(f.taskId), override);
+      assert.equal(scopes.get(nextSpec), null);
+      if (shared) assert.equal(scopes.get('auxiliary'), 'Consider previous releases of the auxiliary data.');
+      for (const task of tasks.filter(item => item.kind !== 'spec')) {
+        assert.ok(prompt.includes(JSON.stringify({ id: task.id, title: task.title, agreement: task.agreement })));
+      }
+      assert.deepEqual(receipt.coveredTaskIds, [nextSpec]);
+    } finally { store.close(); }
+  });
+}
+
+test('a model-excluded confirmed observation settles as advisory without repair or tracking', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor), tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements } }] });
+  const act = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
+  const relative = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
+  try {
+    const observation = { id: 'advisory', severity: 'minor', required: false, consequence: 'An owned record is unreadable after a manual edit.', evidence: 'Only hand editing creates the invalid state.', surfaces: [], basis: [] };
+    const lead = await act({ action: 'dispatch', review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: [observation], session: 'lead' }) });
+    await act({ action: 'review', receipt: relative(lead) });
+    const findings = store.read().tasks[0].findings;
+    const findingId = findings[0].id;
+    const verdict = { id: findingId, verdict: 'confirmed', evidence: 'The manually edited record is unreadable.', value: 'The model excludes the trigger.', repairProposal: 'Reject manually edited records with a dedicated diagnostic.' };
+    const skeptic = await act({ action: 'dispatch', review: { ...f, kind: 'skeptic', findings } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: [verdict], session: 'skeptic' }) });
+    await act({ action: 'validate', receipt: relative(skeptic), findingId });
+    const dispose = { action: 'dispose', findingId, reason: 'Advisory only', obligation: { classification: 'out-of-scope', basis: 'The review model excludes the trigger, and the agreed outcome does not require it.' } };
+    await assert.rejects(act({ ...dispose, disposition: 'implement' }), { code: 'unauthorized-repair' });
+    await assert.rejects(act({ ...dispose, disposition: 'defer', route: 'Backlog' }), { code: 'advisory-finding' });
+    await act({ ...dispose, disposition: 'skip' });
+    const settled = store.read();
+    assert.equal(settled.tasks[0].findings[0].disposition, 'skip');
+    assert.equal(settled.tasks[0].findings[0].route, null);
+    assert.deepEqual(settled.followups, []);
+  } finally { store.close(); }
+});
+
+test('approved override amendments change new assignments while preserving each finding model', async t => {
+  const f = fixture(t);
+  const store = new RunStore(f.root, { create: true });
+  const actor = { host: 'codex', session: 'controller' };
+  const original = 'Exclude imported edits';
+  const amended = 'Include imported edits';
+  store.create({ mechanism: fixtureContinuation(), objective: f.requirements, authority: 'User', controller: actor, controllerClaim: fixtureControllerClaim(actor),
+    tasks: [{ id: f.taskId, title: 'Work', agreement: { source: 'User', outcome: f.requirements, reviewModelOverride: original } }] });
+  const act = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: store.read().revision, taskId: f.taskId, ...request }, overrides);
+  const block = kind => act({ action: 'block', blocker: { kind, reason: 'The scope needs resolution', recoveryAttempted: 'Presented the decision' } });
+  const relative = result => path.relative(f.root, result.receiptFile).split(path.sep).join('/');
+  const lead = async id => {
+    const observation = { id, severity: 'minor', required: false, consequence: 'The imported record is unreadable.', evidence: 'Checked the import boundary.', surfaces: [], basis: [] };
+    const result = await act({ action: 'dispatch', review: { ...f, kind: 'code' } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, { findings: [observation], session: id }) });
+    await act({ action: 'review', receipt: relative(result) });
+    return result.receipt.reviewModel.current;
+  };
+  try {
+    const originalModel = await lead('first-lead');
+    assert.equal(originalModel.scopes[0].override, original);
+    await block('user-decision');
+    await act({ action: 'unblock', evidence: 'User approved the new boundary', updatedReviewModelOverride: amended });
+    const amendedModel = await lead('second-lead');
+    assert.equal(amendedModel.scopes[0].override, amended);
+    assert.notEqual(amendedModel.scopes[0].sha256, originalModel.scopes[0].sha256);
+
+    const findings = store.read().tasks[0].findings;
+    const { receipt } = await act({ action: 'dispatch', review: { ...f, kind: 'skeptic', findings } }, { runAgent: options => mockAgent(options, DIMENSIONS.code, {
+      findings: findings.map(({ id }) => ({ id, verdict: 'confirmed', evidence: 'Verified claim', value: 'Relevant', repairProposal: 'Handle the import' })), session: 'amendment-skeptic',
+    }) });
+    assert.deepEqual(receipt.reviewModel.current, amendedModel);
+    assert.deepEqual(receipt.reviewModel.originals.map(({ model }) => model), [originalModel, amendedModel]);
+
+    await block('capability');
+    await assert.rejects(act({ action: 'unblock', evidence: 'Tool is available', updatedReviewModelOverride: null }), { code: 'invalid-request' });
+    await act({ action: 'unblock', evidence: 'Tool is available' });
+    assert.equal(store.read().tasks[0].agreement.reviewModelOverride, amended);
+    await block('user-decision');
+    await assert.rejects(act({ action: 'unblock', evidence: 'User attempted an update', updatedReviewModelOverride: ' ' }), { code: 'invalid-request' });
+    await act({ action: 'unblock', evidence: 'User withdrew the override', updatedReviewModelOverride: null });
+    const cleared = await lead('third-lead');
+    assert.equal(cleared.scopes[0].override, null);
+    assert.equal(Object.hasOwn(store.read().tasks[0].agreement, 'reviewModelOverride'), false);
+  } finally { store.close(); }
+});
 
 test('invalid skeptic assignments reject before workers or model attempts are created', async t => {
   const f = fixture(t);

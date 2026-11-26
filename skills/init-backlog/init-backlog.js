@@ -3,6 +3,7 @@
 
 const { Setup, currentBacklogStatus, initialize } = require('../../internal/setup');
 const { inspectTemplates } = require('../../internal/template-text');
+const { inspectReviewModel } = require('../../internal/setup-review-model');
 const { requireCondition } = require('../../internal/runtime/store');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -18,7 +19,7 @@ function main(args = process.argv.slice(2)) {
     // Template differences are computed from the current files on every inspect and never journaled.
     const templates = result.status === 'unwrap-recovery-required' ? { unavailable: 'unwrap-recovery-required' } : inspectTemplates(root, { validate: () => currentBacklogStatus(fs.realpathSync.native(root)) });
 
-    return { ...result, templates };
+    return { ...result, templates, reviewModel: inspectReviewModel(setup.root) };
   } finally { setup.close(); }
 }
 

@@ -193,16 +193,20 @@ test('a run dispatches a lead and a skeptic in separate repositories, shuffles c
   const calls = [];
 
   // Act
-  const result = await suite.run(options(root, root), dependencies(LEAD_FINDS_DEFECT, calls));
+  const result = await suite.run(options(root, root, { reviewModel: true }), dependencies(LEAD_FINDS_DEFECT, calls));
   const report = suite.grade(path.join(root, 'run'), path.join(root, 'no-targets.json'));
 
   // Assert
   assert.equal(result.stopped, null);
   assert.deepEqual(calls.map(call => call.kind), ['code', 'skeptic']);
+  assert.equal(calls[0].request.reviewModel.current.source, 'bundled');
+  assert.equal(calls[1].request.reviewModel.current.text, calls[0].request.reviewModel.current.text);
+  assert.match(report.reviewModelSha256, /^[a-f0-9]{64}$/);
   assert.notEqual(calls[0].options.protectedRoot, calls[1].options.protectedRoot);
   assert.deepEqual(calls[1].request.findings.map(claim => claim.id).sort(), ['F1', 'F2']);
   assert.equal(fs.existsSync(path.join(calls[1].options.protectedRoot, '.nightshift/runs/reviews', calls[0].request.id)), false);
   assert.deepEqual([report.pooled.detection.numerator, report.pooled.detection.denominator], [1, 1]);
+  assert.deepEqual([report.pooled.postSkepticRecall.numerator, report.pooled.postSkepticRecall.denominator], [1, 1]);
   assert.deepEqual([report.pooled.skepticAccuracy.numerator, report.pooled.skepticAccuracy.denominator], [2, 2]);
   assert.equal(report.pooled.severityAccuracy.value, 1);
   assert.equal(report.pooled.tokensPerFixture.value, 2000);
@@ -1350,12 +1354,12 @@ test('out-of-scope findings with required true, incidental truth and an attribut
     // Alpha's lead runs first and beta's second, since fixtures run in name order.
     lead: () => calls.filter(call => call.kind === 'code').length === 2
       ? [...LEAD_FINDS_DEFECT.lead(), { id: 'L2', severity: 'important', consequence: 'Callers see wrong totals.', evidence: 'The cart total is off', required: true, surfaces: [], basis: [] }]
-      : [{ id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: true, surfaces: [], basis: [] }, { id: 'L3', severity: 'minor', consequence: 'Stale exports.', evidence: 'src/notes.js:2 exports', required: false, surfaces: [], basis: [] }],
-    verdict: () => 'confirmed',
+      : [{ id: 'L1', severity: 'minor', consequence: 'Vague name.', evidence: 'src/calc.js:1 addTotal is vague', required: false, surfaces: [], basis: [] }, { id: 'L3', severity: 'minor', consequence: 'Stale exports.', evidence: 'src/notes.js:2 exports', required: false, surfaces: [], basis: [] }, { id: 'L4', severity: 'minor', consequence: 'The helper name leaves its purpose unclear.', evidence: 'A finding at the naming symptom.', required: true, surfaces: [], basis: [] }],
+    verdict: claim => claim.evidence.includes('addTotal subtracts') ? 'unverified' : 'confirmed',
   };
   await suite.run(options(root, root, { selected: ['alpha', 'beta'] }), dependencies(scenario, calls));
   const runFolder = path.join(root, 'run');
-  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ 'beta__claude-claude-opus-5-5__r1': { L2: { outcome: 'attributed', entry: 'D1', reason: 'The same defect at its symptom' } } }));
+  fs.writeFileSync(path.join(runFolder, 'adjudications.json'), JSON.stringify({ 'alpha__claude-claude-opus-5-5__r1': { L4: { outcome: 'attributed', entry: 'O1', reason: 'The same naming issue at its symptom' } }, 'beta__claude-claude-opus-5-5__r1': { L2: { outcome: 'attributed', entry: 'D1', reason: 'The same defect at its symptom' } } }));
 
   // Act
   const report = suite.grade(runFolder, path.join(root, 'none.json'));
@@ -1363,10 +1367,13 @@ test('out-of-scope findings with required true, incidental truth and an attribut
   const beta = report.fixtureRuns.find(item => item.fixture === 'beta');
 
   // Assert
-  assert.deepEqual([report.pooled.outOfScope.numerator, report.pooled.outOfScope.requiredFalse], [1, 0]);
-  assert.deepEqual([alpha.clean, alpha.unmatched, alpha.falseConfirmed], [false, [], 0]);
+  assert.deepEqual([report.pooled.outOfScope.numerator, report.pooled.outOfScope.requiredFalse], [1, 1]);
+  assert.deepEqual([report.pooled.overreach.numerator, report.pooled.overreach.denominator], [1, 1]);
+  assert.deepEqual([alpha.clean, alpha.duplicates, alpha.falseConfirmed], [false, 1, 0]);
   assert.deepEqual([report.pooled.cleanChangeFalsePositives.denominator, report.pooled.unmatchedConfirmations.denominator], [0, 2]);
   assert.deepEqual([beta.detected, beta.attributions, beta.duplicates, beta.falseConfirmed], [1, 0, 1, 0]);
+  assert.equal(beta.detectedAndConfirmed, 1);
+  assert.deepEqual([report.pooled.postSkepticRecall.numerator, report.pooled.postSkepticRecall.denominator], [1, 1]);
   // Alpha's verdicts: the out-of-scope finding and the decoy; the incidental match is not a skeptic pair.
   assert.equal(alpha.skepticTotal, 2);
 });

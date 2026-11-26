@@ -336,8 +336,11 @@ class RunStore {
         const kind = task.kind ?? 'code';
         requireCondition(['code', 'spec', 'docs', 'lore'].includes(kind), 'invalid-queue', 'Unknown task kind');
         const agreement = structuredClone(task.agreement);
+        require('./review-model').reviewModelOverride(agreement);
         if (Object.hasOwn(agreement, 'spec')) require('./evidence').projectFile(this.root, text(agreement.spec, 'agreement.spec'));
         if (kind === 'code' && agreement.spec && agreement.specReviewed === true) {
+          agreement.specReviewModelSha256 ??= null;
+          requireCondition(agreement.specReviewModelSha256 === null || typeof agreement.specReviewModelSha256 === 'string' && /^[a-f0-9]{64}$/.test(agreement.specReviewModelSha256), 'invalid-request', 'A pre-reviewed spec model identity must be a SHA-256 digest');
           agreement.specSnapshot = require('./evidence').snapshot(this.root, [agreement.spec]);
           requireCondition(agreement.specSnapshot.files.every(file => file.sha256 !== null), 'missing-spec', 'A previously reviewed governing spec must exist');
         }

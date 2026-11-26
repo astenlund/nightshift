@@ -5,6 +5,8 @@ description: "Use to inspect dependency-resolved ready work in a project with th
 
 # Ready work
 
+When investigating a selection, apply the [review-model guidance](../../internal/workflow.md#review-and-repair) before asking whether to begin. Propose any consequential work-specific override with its reason in the readback, then carry the approved override into the handover agreement.
+
 Use [automatic preparation and resource binding](../../internal/releases/REFERENCE.md#skill-activation) before this skill. Claude native session marker: `${CLAUDE_SESSION_ID}`.
 
 Run the bound launcher with entry `ready` and the absolute project root. It returns ready, blocked, external and exploring work plus structural errors and notices, and `runState`, the project's open run records and run-store compaction state, and `release`, the release running the parser. Report parser failures as failures, not an empty or clean backlog.

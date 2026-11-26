@@ -13,6 +13,9 @@ const { discoverUnwrapArtifacts, recoveryDiagnostics, recoverPendingUnwrap } = r
 const { isLockName, acquireLock, inspectLock } = require('./unwrap-lock');
 const { RECOVERY_SUFFIX } = require('./unwrap-recovery');
 const { adjudicate, loadContext, preserveUnsafeLeftovers, requireReadableDecisions, validateDecisions } = require('./template-text');
+const { applyReviewModel, validateReviewModelDecision } = require('./setup-review-model');
+const { publicationLockMovedFrom } = require('./review-model-publication');
+const { REVIEW_MODEL_PATH } = require('./review-model');
 
 const BACKLOG_FILES = ['FEATURES.md', 'BUGS.md', 'QUICK_WINS.md', 'PATTERNS.md', 'FEATURES_HISTORY.md', 'BUGS_HISTORY.md', 'QUICK_WINS_HISTORY.md'];
 const OWNED_DIRECTORIES = ['features', 'bugs', 'patterns', 'inbox', 'plans', 'specs', 'runs'];
@@ -150,6 +153,9 @@ function ignorePath(relative) {
 }
 
 function excludedReference(file, policy) {
+  const isReviewModel = process.platform === 'win32' ? file.toLowerCase() === REVIEW_MODEL_PATH.toLowerCase() : file === REVIEW_MODEL_PATH;
+  if (isReviewModel) return true;
+
   return ['.tmp/', '.nightshift/setup/', '.nightshift/runs/', '.claude/runs/'].some(prefix => file.startsWith(prefix)) || ['AGENTS.md', 'CLAUDE.md', '_AGENTS.md', '_CLAUDE.md'].includes(file) || matchesPurpose(file, policy.excludeReferences ?? []);
 }
 
@@ -190,6 +196,14 @@ class Setup {
     this.db.prepare('UPDATE migration SET body=? WHERE singleton=1').run(JSON.stringify(state));
   }
 
+  assertJournalRoot(state) {
+    if (state.root === this.root) return;
+    const original = typeof state.root === 'string' && path.isAbsolute(state.root) ? state.root : null;
+    const location = original === null ? 'The original setup location is unavailable.' : `The original setup location was ${original}.`;
+    requireCondition(state.status === 'complete' && original !== null && publicationLockMovedFrom(this.root, original), 'wrong-project',
+      `Cannot establish that the migration journal belongs to this checkout. The current checkout is ${this.root}. ${location} Preserve the setup state and follow the init-backlog recovery guidance.`);
+  }
+
   unwrapScope(options) {
     const ownership = this.saved()?.policy?.ownership ?? migrationPolicy(options).ownership;
     return { targets: [path.join(this.root, '.claude')], options: migrationUnwrapOptions(this.root, ownership) };
@@ -205,7 +219,10 @@ class Setup {
     const unwrapRecovery = this.pendingUnwrap(options);
     if (unwrapRecovery.length > 0) return { root: this.root, status: 'unwrap-recovery-required', unwrapRecovery };
     const saved = this.saved();
-    if (saved) return saved;
+    if (saved) {
+      this.assertJournalRoot(saved);
+      return { ...saved, root: this.root };
+    }
     const policy = migrationPolicy(options);
     const found = inventory(this.root, policy.ownership);
     for (const move of found.files) {
@@ -244,17 +261,18 @@ class Setup {
       state = prepared;
       this.db.prepare('INSERT INTO migration VALUES (1, ?)').run(JSON.stringify(state));
     }
+    this.assertJournalRoot(state);
     const policy = state.policy ?? migrationPolicy({});
     for (const key of ['ownership', 'excludeReferences', 'historicalReferences', 'activeReferences']) if (options[key] !== undefined) requireCondition(require('node:util').isDeepStrictEqual(options[key], policy[key]), 'migration-policy-drift', 'Resume using the saved ownership and reference policy; reconcile conflicting instructions first');
     const remaining = () => {
       const found = inventory(this.root, policy.ownership);
       return [...found.files.map(file => file.source), ...found.undecided.filter(directory => !state.directories.includes(directory))];
     };
-    requireCondition(state.root === this.root, 'wrong-project', 'Migration journal belongs to another project');
     if (state.status === 'complete') {
       requireCondition(remaining().length === 0, 'new-legacy-content', 'New legacy files appeared after migration; reconcile them before starting work');
       this.rebindRun(state);
-      return state;
+      // Keep the original root in the journal to authenticate a later relocation with the same lock.
+      return { ...state, root: this.root };
     }
     const record = () => this.save(state);
     for (const directory of state.directories) safeDirectory(this.root, directory.replace(/^\.claude\//, '.nightshift/'), true);
@@ -497,6 +515,7 @@ function currentBacklogStatus(root) {
 
 function initialize(root, options = {}) {
   requireCondition(options.unwrap === undefined || typeof options.unwrap === 'boolean', 'invalid-policy', 'unwrap must be true or false');
+  validateReviewModelDecision(options.reviewModelDecision);
   root = fs.realpathSync.native(root);
   assertQuiescent(root);
   // Decisions and the remembered-keeps file are refused before any write, migration included.
@@ -530,7 +549,9 @@ function initialize(root, options = {}) {
     const unwrapped = options.unwrap === true ? completed : null;
     const backlog = validateBacklog(setup.root, '.nightshift');
     requireValidBacklog(backlog, '.nightshift');
-    return { migration, unwrapped, backlog, templates };
+    const reviewModel = applyReviewModel(setup.root, options.reviewModelDecision);
+
+    return { migration, unwrapped, backlog, templates, reviewModel };
   } catch (error) {
     error.completed = [...completed, ...templateWrites, ...(error.completed ?? [])];
     throw error;

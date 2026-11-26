@@ -19,6 +19,7 @@ const { timeLeft } = require('./limits');
 const { isAdmittedModel, requireAdmittedModel, requirePermittedEffort, roleFor } = require('./models');
 const vibe = require('./vibe');
 const { validateRelevanceRequest, validateRelevanceReport, relevancePrompt, relevanceBinding } = require('./relevance');
+const { reviewModelBrief, reviewModelDigest } = require('./review-model');
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 900000;
 // Failures that end a dispatch at once rather than passing to the next candidate.
@@ -471,7 +472,7 @@ function buildPrompt(request, { workspace, host, probeFiles = request.probeFiles
   const empties = skeptic ? '' : ' Leave closures empty unless findings are listed as pending closure, positions empty unless this is a dialogue turn, and applicability empty unless this is a relevance turn.';
   // A resumed Vibe session runs under its predecessor's system prompt, so the dispatch's own rules reach it through the turn prompt.
   const carried = sameCopy && rules ? `Applicable rules for this turn, which govern this assessment as the system prompt of a fresh dispatch would:\n${rules}\n` : '';
-  return common + (specScope ? specScope + '\n\n' : '') + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
+  return common + reviewModelBrief(request.reviewModel) + (specScope ? specScope + '\n\n' : '') + definitions + '\n\n' + role + acknowledgementBrief(request) + carried + checkBrief(request) + execution + (host === 'vibe' ? vibeRules(workspace) : '') + TOOL_FAILURE_RULE + '\n' + `\nReturn the requested structured report for request ${request.id} with requestId set to that id verbatim, ${fields.slice(1, -1).join(', ')} and ${fields.at(-1)}. Use an empty probes array when no execution evidence is missing.${empties}\n`;
 }
 
 // Selection observations are independent of an attempt outcome and do not count as model attempts.
@@ -593,6 +594,7 @@ async function dispatchReview(root, options, dependencies = {}) {
       lineage: continuation?.lineage ?? id,
       pendingClosures: (options.continuationContext?.pendingClosures ?? []).map(finding => ({ id: finding.id, localId: finding.localId })),
       relevance: options.relevance ?? null, ...retention,
+      ...(options.reviewModel ? { reviewModel: options.reviewModel } : {}),
       dialogue: options.dialogue ?? null, acknowledgements: options.acknowledgements ?? [], continuationContext: options.continuationContext ?? null,
     };
     writeJson(path.join(target, 'request.json'), request);
@@ -670,6 +672,7 @@ async function dispatchReview(root, options, dependencies = {}) {
           ...(result.host === 'vibe' ? { ...vibeAttemptFields(result.vibe), attributionEvidence: result.vibe.attributionFiles.map(file => ({ path: path.relative(canonical, file).split(path.sep).join('/'), sha256: hash(fs.readFileSync(file)) })) } : {}),
           continues: request.continues, lineage: request.lineage, dialogue: request.dialogue,
           relevance: relevanceBinding(request.relevance), applicability: report.applicability ?? [], ...retention,
+          ...(request.reviewModel ? { reviewModel: request.reviewModel } : {}),
           closures: report.closures ?? [], positions: report.positions ?? null, threadTokens: result.threadTokens ?? null,
           eventFile: path.relative(canonical, path.join(artifacts, 'events.jsonl')).split(path.sep).join('/'),
           eventHash: hash(fs.readFileSync(path.join(artifacts, 'events.jsonl'))),
@@ -747,6 +750,7 @@ function readReceipt(root, relative, state, taskId, { scopesFor = () => [] } = {
   const assignment = JSON.parse(fs.readFileSync(projectFile(root, assignmentFile), 'utf8'));
   requireCondition(assignment.id === receipt.requestId && assignment.runId === receipt.runId && assignment.taskId === receipt.taskId && assignment.kind === receipt.kind && isDeepStrictEqual(assignment.snapshot, receipt.snapshot) && isDeepStrictEqual(assignment.contextSnapshot, receipt.contextSnapshot) && isDeepStrictEqual(assignment.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt no longer matches the saved dispatch assignment and inputs');
   requireCondition(isDeepStrictEqual(assignment.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt resource binding does not match its immutable assignment');
+  requireCondition(isDeepStrictEqual(assignment.reviewModel, receipt.reviewModel), 'changed-assignment', 'Receipt review model differs from its assignment');
   // Assignments from earlier releases carry no continuation fields and read as fresh dispatches of their own lineage.
   requireCondition(isDeepStrictEqual(assignment.continues ?? null, receipt.continues ?? null) && lineageOf(assignment) === lineageOf(receipt) && isDeepStrictEqual(assignment.dialogue ?? null, receipt.dialogue ?? null), 'changed-assignment', 'Receipt continuation differs from its immutable assignment');
   requireCondition(receipt.continues?.kind !== 'resumed' || receipt.session === receipt.continues.session, 'unattributed-review', 'A resumed receipt must come from the session it resumed');
@@ -754,6 +758,7 @@ function readReceipt(root, relative, state, taskId, { scopesFor = () => [] } = {
     const worker = state.workers.find(candidate => candidate.id === receipt.requestId);
     requireCondition(worker?.snapshotDigest === receipt.snapshot.digest && worker.taskId === taskId && isDeepStrictEqual(worker.coveredTaskIds, receipt.coveredTaskIds), 'changed-assignment', 'Receipt differs from the controller-owned dispatch record');
     requireCondition(isDeepStrictEqual(worker.resources ?? null, receipt.resources ?? null), 'changed-assignment', 'Receipt differs from the worker resource binding');
+    requireCondition(worker.reviewModelDigest === (receipt.reviewModel ? reviewModelDigest(receipt.reviewModel) : undefined), 'changed-assignment', 'Receipt review model differs from the registered assignment');
     requireCondition(isDeepStrictEqual(worker.controller ?? null, assignment.controller ?? null), 'changed-assignment', 'Receipt assignment changed its dispatch controller provenance');
     requireCondition(isDeepStrictEqual(worker.continues ?? null, receipt.continues ?? null) && lineageOf(worker) === lineageOf(receipt), 'changed-assignment', 'Receipt continuation differs from the controller-owned dispatch record');
     requireCondition(isDeepStrictEqual(worker.relevance ?? null, receipt.relevance ?? null), 'changed-assignment', 'Receipt relevance differs from its registered assignment');

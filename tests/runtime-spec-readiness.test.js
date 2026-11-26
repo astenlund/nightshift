@@ -7,6 +7,7 @@ const test = require('node:test');
 const { fixtureContinuation } = require('./fixtures/continuation');
 const { fixtureControllerClaim } = require('./fixtures/controller-claim');
 const { fixtureReport } = require('./fixtures/report');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
 const { RunStore } = require('../internal/runtime/store');
 const { DIMENSIONS, assertAction, commitmentsFor, historicalDischarge, obligationBrief, transition } = require('../internal/runtime/lifecycle');
 const { identity } = require('../internal/runtime/applicability');
@@ -17,7 +18,7 @@ const { snapshot, verifyCommand } = require('../internal/runtime/evidence');
 
 const actor = { host: 'codex', session: 'controller' };
 const SPEC = 'spec.md';
-const code = (id, agreement = {}, extra = {}) => ({ id, title: id, agreement: { source: 'User', outcome: 'Implement ' + id, spec: SPEC, ...agreement }, ...extra });
+const code = (id, agreement = {}, extra = {}) => ({ id, title: id, agreement: { source: 'User', outcome: 'Implement ' + id, spec: SPEC, ...(agreement.specReviewed ? { specReviewModelSha256: fixtureReviewModelSha256 } : {}), ...agreement }, ...extra });
 const specTask = (id, spec = SPEC, extra = {}) => ({ id, title: id, kind: 'spec', agreement: { source: 'User', outcome: 'Assess ' + id, spec }, ...extra });
 const structural = value => Array.isArray(value?.files) && value.files.length > 0;
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
 const { fixtureReport } = require('./fixtures/report');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -23,7 +24,7 @@ test('imported prior spec assessment requires existing artifact bytes and preser
   fs.copyFileSync(path.join(f.root, 'a.txt'), path.join(root, 'a.txt'));
   const store = new RunStore(root, { create: true });
   const previous = f.store.read();
-  const request = spec => ({ action: 'handover', mechanism: fixtureContinuation(), controller: actor, authority: 'User accepted the governing spec', objective: 'Substantial work', tasks: [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior', spec, specReviewed: true } }] });
+  const request = spec => ({ action: 'handover', mechanism: fixtureContinuation(), controller: actor, authority: 'User accepted the governing spec', objective: 'Substantial work', tasks: [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior', spec, specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } }] });
   try {
     for (const spec of ['missing.md', 'missing-parent/design.md']) {
       await assert.rejects(execute(root, request(spec)), { code: 'missing-spec' });
@@ -64,7 +65,7 @@ test('persisted absent spec approvals cannot pass while deleted-code snapshots r
 for (const mutation of ['changed', 'deleted']) {
   test(`later cumulative code review cannot replace an earlier ${mutation} governing-spec assessment`, t => {
     const f = fixture(t, { tasks: [
-      { id: 'a', title: 'Substantial A', agreement: { source: 'User', outcome: 'Accepted A', spec: 'spec.md', specReviewed: true } },
+      { id: 'a', title: 'Substantial A', agreement: { source: 'User', outcome: 'Accepted A', spec: 'spec.md', specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } },
       { id: 'b', title: 'Later B', requires: ['a'], agreement: { source: 'User', outcome: 'Accepted B' } },
     ] }, root => fs.writeFileSync(path.join(root, 'spec.md'), '# Accepted governing commitments\r\n'));
     f.check('a');

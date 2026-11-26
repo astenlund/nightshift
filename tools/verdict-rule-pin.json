@@ -1,5 +1,5 @@
 {
   "rule": "settled-record-verdict-1",
-  "digest": "a162ad5b17f1623ea58e09b978f63e82aa6cac354452619ecce94e7e13765d08",
-  "statement": "The discharge judgment now reports why a completion is not discharged, but the records it counts discharged are unchanged: historicalDischarge and closingDischargedSince accept exactly what they did, a complete record whose evidence fails is read as not discharged where it used to refuse the pass, and a closed record whose close row is its latest row is judged from the latest-row read already charged."
+  "digest": "4335b2928bad211513d79ba6659a58793aa7f28ec2611fe0e86f7964c75bed93",
+  "statement": "Review-model checks apply to live assessment and repair. The settled-record verdict continues to judge discharge and retired certificates from the same saved evidence and rules."
 }

@@ -66,6 +66,7 @@ const EXCLUDED = Object.freeze({
   'internal/runtime/limits.js': 'validates requested run limits at acceptance',
   'internal/runtime/ownership.js': 'judges adoption eligibility of unfinished work',
   'internal/runtime/project-ownership.js': 'guards canonical writes of running work',
+  'internal/runtime/review-model.js': 'captures or compares live project review guidance; historical discharge and certificate checks use recorded evidence',
   'internal/runtime/scratch.js': 'reports scratch tracking for status',
 });
 const scriptName = path.basename(__filename, '.js');

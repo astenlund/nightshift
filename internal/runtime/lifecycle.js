@@ -537,7 +537,7 @@ function causeText(target, cause) {
 // reviews never cover them; a governing spec never gains it. A docs-gated run never needs it: its code assessments ignore those paths.
 function documentationRelief(root, task, state, review) {
   if (!state || ignoresDocumentationPaths(state) || task.kind === 'spec' || review.snapshot?.inventory !== true) return false;
-  const changed = changedPaths(root, review.snapshot);
+  const changed = inputChanges(root, review, reviewKind(review, task));
   // A changed governing artifact, or one whose identity cannot be established, stays counted and withholds the relief.
   if (!changed || !changed.every(isDocumentationPath) || partitionDocumentationChanges(root, changed, governingArtifacts([task], [review])).counted.length > 0) return false;
   return docsReviewFailure(root, task, state, { closingOnly: task.kind === 'lore' }) === null;
@@ -650,7 +650,7 @@ function nextTriageBaseline(root, state) {
   const earlier = state.closing.docs ? state.closing.docs.baseline ?? null : state.closing.carriedBaseline;
   const reviewedBy = accepts => {
     try {
-      return state.tasks.some(task => task.reviews.some(review => accepts(task, review) && review.snapshot?.inventory === true && completeAssessment(review) && fresh(root, review.snapshot)));
+      return state.tasks.some(task => task.reviews.some(review => accepts(task, review) && review.snapshot?.inventory === true && completeAssessment(review) && inputChanges(root, review, reviewKind(review, task))?.length === 0));
     } catch {
       // A Git failure leaves the changes unreviewed as far as this triage can tell, so the earlier baseline stands.
       return false;
@@ -1133,6 +1133,9 @@ function transition(state, request, integration = null) {
         text(obligation.basis, 'obligation.basis');
         requireCondition(obligation.classification !== 'required' || request.disposition === 'implement', 'required-obligation', 'An agreed required obligation cannot be waived');
         requireCondition(obligation.classification !== 'out-of-scope' || request.disposition !== 'implement', 'unauthorized-repair', 'An out-of-scope finding does not authorize a repair');
+        if (obligation.classification === 'out-of-scope' && state.workers.some(worker => worker.id === finding.raisedBy?.requestId && worker.reviewModelDigest)) {
+          requireCondition(request.disposition === 'skip', 'advisory-finding', 'An out-of-scope review observation is advisory and has no repair or follow-up route');
+        }
       }
       Object.assign(finding, { obligation: request.obligation ?? null, disposition: request.disposition, reason: request.reason, route: request.route ?? null, dispositionRevision: state.revision + 1 });
       break;
@@ -1227,14 +1230,21 @@ function transition(state, request, integration = null) {
         delete task.docsExemption;
       }
       break;
-    case 'unblock':
+    case 'unblock': {
       text(request.evidence, 'unblock.evidence');
       requireCondition(task.blocker, 'not-blocked', 'Task has no recorded blocker to resolve');
+      const updatedOverride = request.updatedReviewModelOverride;
+      if (updatedOverride !== undefined) {
+        requireCondition(task.blocker.kind === 'user-decision', 'invalid-request', 'A review model override can change only when resolving a user-decision blocker');
+        if (updatedOverride !== null) text(updatedOverride, 'updatedReviewModelOverride');
+      }
       task.resolutions = [...(task.resolutions ?? []), { blocker: task.blocker, evidence: request.evidence }];
       if (task.blocker.kind === 'user-decision') {
         resetClosing(state);
         task.agreement.decisions = [...(task.agreement.decisions ?? []), request.evidence];
         if (request.updatedOutcome !== undefined) task.agreement.outcome = text(request.updatedOutcome, 'updatedOutcome');
+        if (updatedOverride === null) delete task.agreement.reviewModelOverride;
+        else if (updatedOverride !== undefined) task.agreement.reviewModelOverride = updatedOverride;
         task.requirementsRevision = state.revision + 1;
         delete task.docsExemption;
         // A code task's amendment reopens the spec task that governs it, linked or queued, and never a structural link's target; a task
@@ -1250,6 +1260,7 @@ function transition(state, request, integration = null) {
       }
       task.blocker = null;
       break;
+    }
     case 'retrospective':
       requireCondition(state.status !== 'complete' && closingReady(state), 'closing-before-work', 'Finish actionable engineering and reconcile workers before session retrospective');
       recordRetrospective(state, request.evidence);

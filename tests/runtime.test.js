@@ -2,6 +2,7 @@
 
 const { fixtureReport } = require('./fixtures/report');
 const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -570,7 +571,7 @@ test('spec acceptance is bound to the spec content, idempotent while it holds an
 });
 
 test('recording spec acceptance leaves the bound commitments and an imported assessment current', t => {
-  const f = specFixture(t, [{ id: 'code', title: 'Substantial work', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md', specReviewed: true } }]);
+  const f = specFixture(t, [{ id: 'code', title: 'Substantial work', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md', specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } }]);
   f.act({ action: 'start-task', taskId: 'code' });
   f.act({ action: 'check', taskId: 'code', evidence: verifyCommand(f.root, { name: 'fixture validation', executable: process.execPath, args: ['--version'], paths: ['spec.md'] }) });
   const commitments = commitmentsFor(f.store.read().tasks);

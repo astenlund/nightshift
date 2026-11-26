@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.42",
+  "version": "3.3.43",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "fc95561631a4ef5faf09364f3859d64e2307003835fa178697e1350b9df24302"
+      "sha256": "a58dba266c3738e88c003291db3b783a4a082aea79bf7bccf05e0a9bb523bff8"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "65ae48bc24c53bb01cd2afda8ad5edc760d265201b6a9921c71ccdc9e39bcb72"
+      "sha256": "d78f68a78d5bb9112cb6cd7f5103d9104c821fc26b3414f718ca4a273d1327a3"
     },
     {
       "path": "LICENSE",
@@ -169,9 +169,24 @@
       "sha256": "55a779a52fdeb04ac6e9487924dc3413ba98d9565dd31751d60cdc272bed7cc4"
     },
     {
+      "path": "internal/review-model-move.ps1",
+      "bytes": 965,
+      "sha256": "6de65cabaa617c92b927bd8cc9084eba2198c3d40c774fc55b04899183c6f0de"
+    },
+    {
+      "path": "internal/review-model-publication.js",
+      "bytes": 8046,
+      "sha256": "4ef3e086603b3df97ff3d07a1431551783ea9e1c85b4c58ec25026853e8d6d05"
+    },
+    {
+      "path": "internal/review-model.js",
+      "bytes": 973,
+      "sha256": "85fa506ea9900e35e07c2bb36ec963fbc263321b44578d0e208ac31015f89d4d"
+    },
+    {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 194465,
-      "sha256": "c8fc9a2bdbd7fe0f4da2fcfc2eb774a8ea4f47cbdcdc5585bff1f89e63b18b1e"
+      "bytes": 196643,
+      "sha256": "32d432483a3e1f2b931665da721d1997c40a61b0d85c4c87cf000a84b7faa796"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -180,8 +195,8 @@
     },
     {
       "path": "internal/runtime/applicability.js",
-      "bytes": 14281,
-      "sha256": "cc1efd399f3433207720dc19e66a045b57ad32546369c45e523cfe13af8e020d"
+      "bytes": 14386,
+      "sha256": "5a7b0ae20922fb1d19e7a194213618d009376250ee0765fb219ba778e2ef0998"
     },
     {
       "path": "internal/runtime/artifact-hydration.js",
@@ -195,8 +210,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 29001,
-      "sha256": "fb4dd2d87792cfe8caaf96b62b0f872d85742ce899308f3f4cffdcbd431dafd4"
+      "bytes": 30302,
+      "sha256": "31153379ffa685e6f64919b3fbafc0bbdc49bba84ace14588fa1b169a839e9db"
     },
     {
       "path": "internal/runtime/close.js",
@@ -320,8 +335,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 119114,
-      "sha256": "3c17ae2e6ce665c524d503461e5589fd285bff7eb390d5338f5c77e967479065"
+      "bytes": 120074,
+      "sha256": "15ee3205709f5bf846c651d64fc7859bf39317943dce909003e073636136ccfb"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -429,14 +444,19 @@
       "sha256": "4e51f423d48c14dee2de3c6e150a40f532662e43c32a7c52147108d9c3a3842f"
     },
     {
+      "path": "internal/runtime/review-model.js",
+      "bytes": 5268,
+      "sha256": "80936386ddf598a956deec075f239ac79f62c6165fb57f8c7b412ab225622598"
+    },
+    {
       "path": "internal/runtime/review-store.js",
       "bytes": 680,
       "sha256": "9c9344193fa3680783fb80bae161c9d70be638128dccf6e18738251d6c92f5a1"
     },
     {
       "path": "internal/runtime/review.js",
-      "bytes": 78745,
-      "sha256": "fa30132e29366476b340d1bed4a9d35bb9fa73e6b385d21646f60e8aaca6a67c"
+      "bytes": 79386,
+      "sha256": "f5253074e1104fd2a8a94c9d22c1e2db12e4180f9e7e223205a7f0a76189134f"
     },
     {
       "path": "internal/runtime/run-overview.js",
@@ -460,8 +480,8 @@
     },
     {
       "path": "internal/runtime/spec-readiness.js",
-      "bytes": 19128,
-      "sha256": "95455242a0b7ce24366ed164c252b964212984b45ad04d123685647d9f333c1a"
+      "bytes": 20205,
+      "sha256": "97b1e93b2528c021de01bb021b3dd50059c2d102e2a35e296c373afcda6b0293"
     },
     {
       "path": "internal/runtime/statuses.js",
@@ -470,8 +490,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 29728,
-      "sha256": "a97f4761287a51ed62c99a55b002c0b8674b41751d4fae9d8f8cd251ff0d8c98"
+      "bytes": 30111,
+      "sha256": "c61447583d0258df884cf8ad780fbd067894cf27a5205f0abb38fa7b8331394b"
     },
     {
       "path": "internal/runtime/targets.js",
@@ -509,9 +529,14 @@
       "sha256": "5b08d410010c37f04bde88cf67dadbe1206b18459cc06607f1779fc75ec598c5"
     },
     {
+      "path": "internal/setup-review-model.js",
+      "bytes": 7038,
+      "sha256": "c68d7fbd8ef47d346dcc4e64ebc9452c222d6bb79a2d1c4deef454b7ad994199"
+    },
+    {
       "path": "internal/setup.js",
-      "bytes": 31879,
-      "sha256": "5d97a55d15eb421e2d3e4d92f91596e5a3ec4cea513dc373e0c111e894042d19"
+      "bytes": 33214,
+      "sha256": "621334254fa2bc0802dcbab85abcb354332af72d1c223351e2ff80d4a1483e7b"
     },
     {
       "path": "internal/template-text/certificates.js",
@@ -555,8 +580,8 @@
     },
     {
       "path": "internal/unwrap-lock.js",
-      "bytes": 5548,
-      "sha256": "47065a41475946c199642dfc7e9f8579dbe8796f81a9c6bbfcaf2ff572ed405d"
+      "bytes": 5915,
+      "sha256": "9f64ea3975f047ea524cff0e7733f05aa29e99810a515f79d2bbee98b3559a3f"
     },
     {
       "path": "internal/unwrap-recovery.js",
@@ -565,8 +590,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 44015,
-      "sha256": "df1fad87bd72953e84220dee7a4da627e726fc8149d6bb2d16199d2f40d8efc6"
+      "bytes": 44821,
+      "sha256": "8d91e5bcb8e2f8931947853749b06bd648fa5e3d1e21ca7a7020d8747f491626"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -575,18 +600,18 @@
     },
     {
       "path": "skills/handover/SKILL.md",
-      "bytes": 11805,
-      "sha256": "07c440f1862f98c907fb812e818f392238db9bf3354a38473e34d7b5ab1c4c73"
+      "bytes": 12436,
+      "sha256": "88addc918ffd22be49ddb7936eab77a400ed4d93274e578e59b48e77e4ab34b6"
     },
     {
       "path": "skills/init-backlog/SKILL.md",
-      "bytes": 9081,
-      "sha256": "b1c89ad41c5fd350802547a8f39254b4171bd2e0b8a0a6da14f71cf9b9a4360b"
+      "bytes": 11891,
+      "sha256": "5c92f81d786ecb5cd3a01f716f44c59e26032aeabc5023d937701749b7010eff"
     },
     {
       "path": "skills/init-backlog/init-backlog.js",
-      "bytes": 1777,
-      "sha256": "22a2bf44b6821804b04c084a4a431a60dd323947a0c3d06eb48e458bde5a0ea9"
+      "bytes": 1899,
+      "sha256": "3fee09d42ec81a21365460a2a55320a41e05a171bdea28c10317a3df27683d49"
     },
     {
       "path": "skills/init-backlog/retired-guidance.json",
@@ -629,14 +654,19 @@
       "sha256": "57da1c1677d2ef8176567afd4c157e3f4b0d708cdf3be85810d7afa07cd89451"
     },
     {
+      "path": "skills/init-backlog/templates/review.md",
+      "bytes": 3196,
+      "sha256": "94e95e0a64dc6283142c833607504050054f6f3e8cf4fbe2ae433704ace248aa"
+    },
+    {
       "path": "skills/init-backlog/unwrap.js",
       "bytes": 1209,
       "sha256": "030810e9d73b03e4ac789156de69652b448b7722c38b5021297a357b7321e682"
     },
     {
       "path": "skills/ready/SKILL.md",
-      "bytes": 9864,
-      "sha256": "1a8d0c6ebc91d5e70bdff0fc3ce59d2f63c293e2fd67f1a52f717b6e14152357"
+      "bytes": 10153,
+      "sha256": "97493ba80301fe278aeb62b3fe74b0e8f9c09cbcd4810974f746ee7ec5cb0586"
     },
     {
       "path": "skills/ready/ready.js",

@@ -2,6 +2,8 @@
 
 const { fixtureReport } = require('./fixtures/report');
 const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
+const { captureReviewModel } = require('../internal/runtime/review-model');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -645,6 +647,33 @@ test('recording triage again keeps a baseline whose changes lack review, even af
   assert.equal(assessed.act({ action: 'complete' }).status, 'complete');
 });
 
+for (const missing of [false, true]) {
+  test(`re-triage cannot use stale model coverage to establish a baseline with missing=${missing}`, t => {
+    const f = fixture(t);
+    const model = '.nightshift/REVIEW.md';
+    const lf = String.fromCharCode(10);
+    fs.appendFileSync(path.join(f.root, '.git/info/exclude'), lf + '/' + model + lf);
+    completeTask(f);
+    f.act({ action: 'retrospective', evidence: 'Work assessed' });
+    const triage = () => f.act({ action: 'triage', evidence: 'Tracking disposition recorded' });
+    if (missing) withEnvironment('GIT_DIR', path.join(f.root, 'temporarily-unavailable.git'), triage);
+    else triage();
+    const before = f.store.read().closing.docs.baseline?.digest ?? null;
+    assert.equal(before === null, missing);
+    f.write(model, 'Review supported imports only.');
+    f.write(BACKLOG, ['# Bugs', '', 'Tracked follow-up.', ''].join(lf));
+    const assess = () => f.review('code', 'code', ['code'], [], { reviewModel: { current: captureReviewModel(f.root, f.store.read().tasks), originals: [] } });
+    assess();
+    assert.equal(f.task().reviews.at(-1).snapshot.files.some(file => file.path === model), false);
+    f.write(model, 'Review hand-edited imports too.');
+    triage();
+    assert.equal(f.store.read().closing.docs.baseline?.digest ?? null, before);
+    assess();
+    triage();
+    assert.notEqual(f.store.read().closing.docs.baseline?.digest ?? null, before);
+  });
+}
+
 test('lore code assessments ignore backlog edits after triage, while spec assessments compare their deciding inputs', t => {
   const f = fixture(t, [CODE_TASK, { id: 'lessons', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Assessed instruction proposal' } }]);
   completeTask(f);
@@ -1184,7 +1213,7 @@ test('a repair made only to documentation paths names no fresh code target for a
 test('a feature record that is the task\'s governing spec stays a code-assessment input, unlike another feature record', t => {
   // Arrange
   const spec = '.nightshift/features/idea.md';
-  const f = fixture(t, [{ ...CODE_TASK, agreement: { ...CODE_TASK.agreement, spec, specReviewed: true } }]);
+  const f = fixture(t, [{ ...CODE_TASK, agreement: { ...CODE_TASK.agreement, spec, specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } }]);
   toDocumentation(f);
 
   // Act

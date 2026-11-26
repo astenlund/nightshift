@@ -1,0 +1,40 @@
+{
+  "requirements": "Render the saved view label and width. Keep compatibility with older saved views that omit the label and use Overview in that case. The application's only writer supplies integer widths from 1 to 120 inclusive in all supported releases. Hand-edited application-owned settings are outside the agreed trust boundary.",
+  "audited": "2026-11-26",
+  "defects": [
+    {
+      "id": "D1",
+      "dimension": "correctness-integration",
+      "file": "src/view.js",
+      "lines": [6, 6],
+      "severity": "important",
+      "consequence": "An older supported view has no label and rendering throws instead of showing Overview.",
+      "origin": "synthetic"
+    }
+  ],
+  "outOfScope": [
+    {
+      "id": "O1",
+      "dimension": "correctness-integration",
+      "file": "src/width.js",
+      "lines": [4, 4],
+      "severity": "minor",
+      "consequence": "A hand-edited saved view with a negative width throws instead of rendering. The application writer cannot produce that width.",
+      "origin": "synthetic"
+    }
+  ],
+  "incidental": [],
+  "decoys": [
+    {
+      "severity": "minor",
+      "consequence": "A view saved with width 1 displays no padding.",
+      "evidence": "The helper in src/width.js uses a repeat count one below the width.",
+      "required": false,
+      "reason": "The helper passes width directly to repeat, so width 1 produces one dot.",
+      "surfaces": [
+        { "path": "src/width.js", "location": "padding", "evidence": "The result for width 1 has no dots." }
+      ],
+      "basis": []
+    }
+  ]
+}

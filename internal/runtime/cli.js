@@ -25,6 +25,8 @@ const { continuesRecord, lineageOf, resolveContinuation } = require('./continuat
 const { information, inspectionFailureDetail } = require('../releases/processes');
 const { LegacyInventory } = require('./legacy-inventory');
 const { tableNames } = require('./legacy-store');
+const { captureReviewModel, reviewModelsForFindings, reviewModelDigest } = require('./review-model');
+const { governedBy, resolveGovernance } = require('./spec-readiness');
 
 function requireRuntimeAction(request) {
   requireCondition(isRuntimeAction(request?.action), 'invalid-request', unknownActionMessage(request?.action));
@@ -212,6 +214,14 @@ async function execute(root, request, dependencies = {}) {
       }
       const suppliedFindings = continued?.findings.length ? continued.findings : request.review.findings;
       const assigned = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map(finding => task.findings.find(saved => saved.id === finding?.id)) : [];
+      const relevantFindingIds = [...(request.review.dialogue?.findingIds ?? []), ...(continued?.continuationContext?.pendingClosures ?? []).map(finding => finding.id)];
+      const decidingFindings = [...assigned, ...task.findings.filter(finding => relevantFindingIds.includes(finding.id))];
+      const originals = reviewModelsForFindings(store.root, state, decidingFindings);
+      const governed = task.kind === 'spec' ? governedBy(state.tasks, resolveGovernance(store.root, state.tasks), task.id) : [];
+      const reviewModel = { current: captureReviewModel(store.root, [...coveredTasks, ...governed]), originals,
+        ...(relevance ? { prior: relevance.original.reviewModel?.current ?? null } : {}) };
+      const governedRequirements = governed.length ? String.fromCharCode(10, 10) + 'Interpret the governed scopes using these task agreements.' +
+        String.fromCharCode(10) + JSON.stringify(governed.map(candidate => ({ id: candidate.id, title: candidate.title, agreement: candidate.agreement }))) : '';
       // A recorded finding's surfaces are the ones a skeptic answers, whatever the request supplied.
       const skepticFindings = request.review.kind === 'skeptic' ? (suppliedFindings ?? []).map((finding, index) => (assigned[index] ? { ...finding, surfaces: savedSurfaces(assigned[index]), basis: savedBasis(assigned[index]) } : finding)) : suppliedFindings;
       const currencyScopes = request.review.dialogue && request.review.kind !== 'skeptic' ? request.review.dialogue.findingIds.map(id => scopeOf(task.findings.find(saved => saved.id === id))) : assigned.map(finding => (finding ? scopeOf(finding) : null));
@@ -238,6 +248,7 @@ async function execute(root, request, dependencies = {}) {
         const result = await dispatchReview(store.root, {
           ...request.review, id, runId: registered.id, recordKind: store.kind, taskId: task.id, lens, candidates, ineligibleCandidates, vibeVersions, vibePreflightRequired: true,
           continuation, continuationContext: continued?.continuationContext, findings: skepticFindings, currencyScopes,
+          reviewModel,
           resources: currentResources,
           controller: state.controller,
           forbiddenSessions: [...forbiddenReviewSessions(state)],
@@ -250,12 +261,12 @@ async function execute(root, request, dependencies = {}) {
           recordedChecks: [task, ...coveredTasks.filter(candidate => candidate !== task)],
           coveredTaskIds: coveredTasks.map(candidate => candidate.id),
           commitments: commitmentsFor(coveredTasks),
-          requirements: request.review.requirements + '\n\nAccepted commitments covered by this cumulative assessment:\n' + JSON.stringify(coveredTasks.map(candidate => ({ id: candidate.id, agreement: candidate.agreement }))),
+          requirements: request.review.requirements + '\n\nAccepted commitments covered by this cumulative assessment:\n' + JSON.stringify(coveredTasks.map(candidate => ({ id: candidate.id, agreement: candidate.agreement }))) + governedRequirements,
           onProcess: pid => updateWorker({ pid, status: 'running', phase: 'launched', childProcess: (dependencies.information ?? information)(pid, null, store.root) }),
           // A resumed dispatch holds its known session from registration; a host reporting another one must not release that hold.
           onSession: continuation?.kind === 'resumed' ? undefined : session => updateWorker({ session }),
           onFinalizing: () => updateWorker({ phase: 'finalizing' }),
-          onPrepared: assignment => updateWorker({ snapshotDigest: assignment.snapshot.digest, coveredTaskIds: assignment.coveredTaskIds, commitments: assignment.commitments, baseSha: assignment.baseSha, relevance: require('./relevance').relevanceBinding(assignment.relevance) }),
+          onPrepared: assignment => updateWorker({ snapshotDigest: assignment.snapshot.digest, reviewModelDigest: reviewModelDigest(assignment.reviewModel), coveredTaskIds: assignment.coveredTaskIds, commitments: assignment.commitments, baseSha: assignment.baseSha, relevance: require('./relevance').relevanceBinding(assignment.relevance) }),
           onAttempt: () => store.update(request.actor, store.read().revision, 'model-attempt', current => {
             assertAction(current, request);
             requireCondition(!exhaustedLimit(current, { dispatch: true }), 'resource-limit', 'The authorized model-dispatch allowance has been reached');

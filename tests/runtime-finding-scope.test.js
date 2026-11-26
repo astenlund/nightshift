@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { randomUUID } = require('node:crypto');
 const { fixtureContinuation } = require('./fixtures/continuation');
+const { fixtureReviewModelSha256 } = require('./fixtures/review-model');
 const { fixtureControllerClaim, executeWithFixtureController } = require('./fixtures/controller-claim');
 const { claimSurfaces, consolidatedSurfaces, receiptCurrency, recordedSurfaces, scopeOf, validateLeadSurfaces, validateSurfaceAnswers } = require('../internal/runtime/finding-scope');
 const { PROBE_ATTACHMENT_LIMIT, loadProbeEvidence, runProbe } = require('../internal/runtime/probes');
@@ -318,7 +319,7 @@ test('a skeptic dispatched before its finding was imported cannot supply a verdi
 });
 
 test('in a delivery an edit to the governing spec refuses dispose after a reassessment, and an unrelated edit leaves validate and dispose usable', async t => {
-  const f = delivery(t, [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Governed', spec: 'spec.md', specReviewed: true } }]);
+  const f = delivery(t, [{ id: 'work', title: 'Work', agreement: { source: 'User', outcome: 'Governed', spec: 'spec.md', specReviewed: true, specReviewModelSha256: fixtureReviewModelSha256 } }]);
   const reviewed = await f.dispatch('code', [lead({ id: 'one' }), lead({ id: 'two' })], 'lead');
   await f.act({ action: 'review', receipt: f.receiptPath(reviewed) });
   const [one, two] = f.store.read().tasks[0].findings;

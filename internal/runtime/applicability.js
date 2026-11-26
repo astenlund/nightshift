@@ -4,6 +4,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { requireCondition } = require('./errors');
 const { changedPaths, fileIdentity, fresh, hash, projectFile, snapshot } = require('./evidence');
 const { governingArtifacts, ignoresDocumentationPaths, partitionDocumentationChanges } = require('./documentation-paths');
+const { reviewModelInputChange } = require('./review-model');
 
 // Decisions live beside assessments in reviews, but never become assessments themselves. They bind one immutable assessment
 // and the exact later input scope and commitments examined. Missing, conflicting or unreadable evidence never grants coverage.
@@ -84,7 +85,7 @@ function differences(root, evidence) {
 
 function inputChanges(root, review, kind = review.kind) {
   const snapshots = kind === 'spec' || isDeepStrictEqual(review.snapshot, review.contextSnapshot ?? review.snapshot) ? [review.snapshot] : [review.snapshot, review.contextSnapshot];
-  const changes = snapshots.map(evidence => differences(root, evidence));
+  const changes = [...snapshots.map(evidence => differences(root, evidence)), reviewModelInputChange(root, review)];
   return changes.some(paths => paths === null) ? null : [...new Set(changes.flat())].sort();
 }
 
