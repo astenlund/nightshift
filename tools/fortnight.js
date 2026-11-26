@@ -2,7 +2,8 @@
 'use strict';
 // Fortnightly numbers over one project's run store and dispatch receipts, read-only: the store-derived rows of the fortnightly
 // check in .nightshift/reports/assessment-worklist-20261018.md (tokens per completed task and per repair batch, skeptic
-// refutation rate, minor-only repair cycles, elapsed time per task and completions per fortnight) and the first-run question of
+// refutation rate, minor-only repair cycles, elapsed time per task and completions per fortnight, fresh assessments per completed
+// task) and the first-run question of
 // how often a fresh gate after a resumed closure raised a critical or important finding. Each history row stands for a full state,
 // stored whole or, in a compact store, rebuilt from deltas, so only the metadata columns are read for every row and the state only
 // for the rows whose transition can change
@@ -382,6 +383,14 @@ function minorOnlyCycles(transitions) {
   return { repairs: repairs.length, known: known.length, minorOnly: minorOnly.length, share: known.length ? minorOnly.length / known.length : null };
 }
 
+// Fresh assessments per completed task: the imported reviews on each completed record, the closing record included, that continue
+// no earlier session, a replacement continuing a lineage and so not counted; the direct reading of review loops that do not
+// converge.
+function freshPerTask(runs) {
+  const complete = completeRecordKeys(runs);
+  return runs.flatMap(run => run.records.filter(record => complete.has(`${run.id}\n${record.id}`)).map(record => ({ runId: run.id, taskId: record.id, kind: record.kind, fresh: importedReviews(record).filter(isFresh).length })));
+}
+
 // Fresh-gate catches after resumed closure: each resumed lead whose receipt confirmed at least one closure, and whether the
 // next fresh review of the same kind on the same record, imported after the resumed review was (or, when it never was, after
 // its dispatch), raised a critical or important finding.
@@ -425,6 +434,7 @@ function compute(store, options = {}) {
   const completions = completionsPerFortnight(meta, anchor);
   const batches = repairBatches(runs, transitions, byRecord, receipts, failures);
   const closedBatches = batches.filter(batch => !batch.open);
+  const fresh = freshPerTask(runs);
   return {
     store, reviews, anchor, readAt: new Date().toISOString(),
     runs: { total: runs.length, completed: runs.filter(run => run.status === 'complete').length, closed: runs.filter(run => run.status === 'closed').length },
@@ -435,6 +445,7 @@ function compute(store, options = {}) {
     refutation: refutationRate(runs, receipts),
     minorOnly: minorOnlyCycles(transitions),
     elapsed: { tasks: elapsed, hours: summary(elapsed.filter(task => task.hours !== null).map(task => task.hours)), unknownStart: elapsed.filter(task => task.hours === null).length, reopened: elapsed.filter(task => task.completions > 1).length, completions: completions.fortnights, completionsAfterAnchor: completions.afterAnchor },
+    freshPerTask: { tasks: fresh, ...summary(fresh.map(task => task.fresh)) },
     freshGate: freshGateCatches(runs, byRecord, receipts),
   };
 }
@@ -459,6 +470,8 @@ function formatMarkdown(result) {
   lines.push(`| 4 | Minor-only repair cycles | ${percent(minor.share)} (${minor.minorOnly} of ${minor.known} repair transitions with their findings recorded, of ${minor.repairs}) |`);
   const elapsed = result.elapsed;
   lines.push(`| 7 | Elapsed time per completed task, and runs completed per fortnight | median ${hours(elapsed.hours.median)}, p90 ${hours(elapsed.hours.p90)}, max ${hours(elapsed.hours.max)} over ${elapsed.hours.count} tasks (${elapsed.unknownStart} without a recorded start, ${elapsed.reopened} completed more than once); completions by UTC date ${elapsed.completions.map(entry => `${entry.count} ${entry.fortnight}`).join(', ')}${elapsed.completionsAfterAnchor ? `, ${elapsed.completionsAfterAnchor} after the anchor not listed` : ''} |`);
+  const fresh = result.freshPerTask;
+  lines.push(`| 9 | Fresh assessments per completed task | median ${number(fresh.median)}, worst ${number(fresh.max)} over ${fresh.count} tasks, closing records counted as tasks |`);
   const gate = result.freshGate;
   lines.push(`| first run | Fresh-gate catches after resumed closure | ${gate.catches} of ${gate.withGate} resumed closures followed by a fresh review of the same kind raised a critical or important finding (${gate.closures - gate.withGate} resumed closures had no such fresh review; ${gate.unimported} of the ${gate.closures} were never imported into run state) |`);
   lines.push('', '## Completed tasks', '', '| Run | Task | Kind | Dispatches | Tokens | Thread tokens | Unknown attempts | Vibe tokens | Elapsed |', '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |');

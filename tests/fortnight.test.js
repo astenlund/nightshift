@@ -187,7 +187,12 @@ test('the numbers of a run whose task was repaired three times, reopened twice, 
     assert.deepEqual({ closures: gate.closures, withGate: gate.withGate, catches: gate.catches, unimported: gate.unimported }, { closures: 3, withGate: 2, catches: 1, unimported: 1 });
     assert.deepEqual(gate.entries.map(entry => [entry.requestId, entry.gateRequestId, entry.severeFindings]), [[RESUMED2, GATE, 1], [UNIMPORTED_RESUME, REOPEN, 0], [RESUMED3, null, null]]);
 
+    // The task's three fresh imports are FRESH, GATE and REOPEN; its resumed reviews and the never-imported replacement are not counted.
+    assert.deepEqual(result.freshPerTask.tasks.map(entry => [entry.taskId, entry.fresh]), [['task-a', 3], ['#closing', 1]]);
+    assert.deepEqual({ count: result.freshPerTask.count, median: result.freshPerTask.median, max: result.freshPerTask.max }, { count: 2, median: 1, max: 3 });
+
     const markdown = formatMarkdown(result);
+    assert.match(markdown, /\| 9 \| Fresh assessments per completed task \| median 1, worst 3 over 2 tasks, closing records counted as tasks \|/);
     assert.match(markdown, /1 runs, 1 completed, 0 closed; 12 receipts, 12 on these runs, 1 receipt files unreadable, their tokens, verdicts and closures missing from the counts read from receipts; 14 dispatches of these runs \(registered, plus any receipt without a registration row\), 2 without a receipt, of which 1 may have launched a model/);
     assert.match(markdown, /\| 1 \| Tokens per completed task \| median 600, p90 600, max 600 over 1 tasks \(1 partial, 0 with no dispatch counted as 0\); Vibe apart, in its own accounting: median unknown, max unknown over 0 tasks that ran Vibe \(0 partial\) \|/);
     assert.match(markdown, /\| 2 \| Tokens per repair batch \| median 300, worst 300 over 1 batches, of 3 \(1 ended at a fresh assessment and 1 at the next repair; 1 open, 1 partial, 0 with no dispatch counted as 0\); measured tokens over the closed batches, their unknown attempts excluded and replacements counted as fresh sessions: fresh 2,400, resumed 650, skeptic 0; Vibe apart, in its own accounting: 0 over 0 batches that ran Vibe \(0 partial\) \|/);
@@ -211,6 +216,24 @@ test('the numbers are the same before and after the store is compacted', () => {
     assert.equal(compacted.state, 'swapped');
     assert.ok(compacted.history.delta > 0);
     assert.deepEqual(numbers(), before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fresh assessments count neither an imported replacement nor a task left incomplete', () => {
+  const imported = [review(FRESH, { revision: 2 }), review(UNIMPORTED, { revision: 4, continues: { kind: 'replacement', requestId: FRESH } }), review(GATE, { revision: 6 })];
+  const rows = [
+    ['created', '2026-10-01T00:00:00.000Z', state(0, 'pending')],
+    ['start-task', '2026-10-01T01:00:00.000Z', state(1, 'active')],
+    ['advance', '2026-10-01T03:00:00.000Z', state(2, 'complete')],
+  ];
+  const final = { ...JSON.parse(state(2, 'complete', { task: { reviews: imported } })), status: 'running' };
+  final.tasks.push({ id: 'task-b', kind: 'code', status: 'active', checks: [], reviews: [review(REOPEN, { revision: 7, taskId: 'task-b' })], findings: [] });
+  const { root, store } = writeStore(rows, final);
+  try {
+    const result = compute(store, { anchor: '2026-10-18' });
+    assert.deepEqual(result.freshPerTask.tasks.map(entry => [entry.taskId, entry.fresh]), [['task-a', 2]]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
