@@ -6,9 +6,10 @@ The entries through 3.3.3 were moved here from the README on 2026-10-05 and spli
 
 ## 3.3.43
 
-- Establish a [project review model](.nightshift/specs/review-model.md) for Nightshift. Setup seeds a user-editable `.nightshift/REVIEW.md`, preserves project changes, and offers an approved interactive merge for divergent template updates. Reviews record the effective model and work-specific overrides. Findings outside the effective scope are advisory, subject to accepted commitments. The seeded-defect suite can compare steering and recall with and without the model.
+- Establish a [project review model](.nightshift/specs/review-model.md) for Nightshift. Setup seeds a user-editable `.nightshift/REVIEW.md`, preserves project changes, and offers an approved interactive merge for divergent template updates. An approved mid-run amendment can replace or clear a task override. Reviews record the effective model and work-specific overrides. Findings outside the effective scope are advisory, subject to accepted commitments. The seeded-defect suite can compare steering and recall with and without the model.
+- Deterministic regressions cover setup, checkout moves, interrupted lock creation, editor conflicts, recovery, amended overrides, and model currency. Isolated Codex 0.172.0 checks verified template seeding and showed that the skeptic received the same captured policy as the lead after the project file changed. The interactive merge dialogue, readback proposals, and controller handling of advisories and approved overrides still lack live verification. Claude Code live verification is pending. Comparative effectiveness remains unmeasured pending a separate campaign budget.
 - Review-model checks apply to live assessment and repair. The settled-record verdict continues to judge discharge and retired certificates from the same saved evidence and rules.
-- Instruction words increased from 47,840 to 48,996 by the [fortnightly count](.nightshift/reports/assessment-worklist-20261018.md#fortnightly-check). The bundled policy and the procedures for setup, scope agreement and review evidence account for the growth.
+- Instruction words increased from 47,840 to 49,288 by the [fortnightly count](.nightshift/reports/assessment-worklist-20261018.md#fortnightly-check). The bundled policy and the procedures for setup, scope agreement and review evidence account for the growth.
 
 ## 3.3.42
 
