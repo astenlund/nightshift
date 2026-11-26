@@ -5,7 +5,7 @@ Recorded 2026-11-26 on Windows with Node.js 22.23.2 for the [project review mode
 | Host | Candidate payload SHA-256 | Lead handoff | Skeptic handoff |
 | --- | --- | --- | --- |
 | Codex 0.172.0 | `da7c17afa88d8d609bb2cdb26a8e4583f4be0d07f08373aefa02c7fce7d391a2` | Verified with `gpt-6.2-sol` | Verified with `gpt-6.2-sol` |
-| Claude Code 2.1.332 | `6cca06143eba50d32b9a2b8479a70d38aed1db7768a22c8f39dc1a775e55b136` | Opus request rejected by host | Dispatch halted after lead failure |
+| Claude Code 2.1.332 | `6cca06143eba50d32b9a2b8479a70d38aed1db7768a22c8f39dc1a775e55b136` | Verified with `claude-opus-5-5` | Verified with `claude-opus-5-5` |
 
 ## Codex native dispatch
 
@@ -23,17 +23,20 @@ The total was 238,909 tokens. The fixture supplied the original-model field to t
 
 ## Claude Code native dispatch
 
-The Claude Code payload came from commit `5bf579e37582aa28c853eb1c4e31708a00d7b351`. The planned check used the installed runtime's controller dispatch path in a disposable Git project, with simulated controller ownership and real native reviewers. It excluded the project policy from the reviewer's file inventory so the marker could reach the reviewer only through the assignment. The plan was to import a lead finding, change the policy, then check the original and current markers in the skeptic's receipt and answer.
+The Claude Code payload came from commit `5bf579e37582aa28c853eb1c4e31708a00d7b351`. The check used the installed runtime's controller dispatch path in a disposable Git project, with simulated controller ownership and real native reviewers. It excluded the project policy from the reviewer's file inventory so the marker could reach the reviewer only through the assignment.
 
-Claude Code rejected the lead request for `claude-opus-5-6` with API status 404. The runtime recorded `unusable-review` and produced no attributable lead receipt. The native result reported zero input, output, cache-read, and cache-creation tokens. The check stopped on that failure, as agreed under the 350,000-token budget. No skeptic or substitute model was dispatched.
+The lead reported `maple register` and identified a real fixture regression where the function returned 2 instead of 1. After the runtime imported that finding, the fixture changed the project policy marker to `amber register`. The runtime recovered the lead's policy for the finding from the original assignment. The skeptic distinguished the original and current markers in its summary, confirmed the finding, and the runtime accepted that verdict. Both receipts were complete and attributable to Opus 5.5 in two distinct native sessions. The skeptic's original model was structurally equal to the lead's captured model.
 
-| Evidence | Value |
-| --- | --- |
-| Lead request ID | `2a3195d3-82ae-4ad3-97dd-39a4c675783a` |
-| Setup output SHA-256 | `56c1c32bccd80367f5e0810a4f21471b02cf3cc638f3346e1a5282157edaaf82` |
-| Native event log SHA-256 | `6cf76ef2f3219f406e879912bf03f2d861a3ec276a7d8ae2ebd386e0a0c16b20` |
-| Runtime failure record SHA-256 | `155a2c5ab570a67f81c9470f51e0e15956497b08cd1a6a3e72b5eb004c3c7d36` |
+| Evidence | Lead | Skeptic |
+| --- | --- | --- |
+| Request ID | `1e70afd6-26ea-45ff-ba26-f40a38ed64d4` | `673e457b-1fb9-4072-b560-0be075704139` |
+| Current scope SHA-256 | `76357594c581acb72acf6744ca490dd339d54193d6c72112afeb573568dbe234` | `e55e268d799b5f95771f68af4193059340e1b1dae352db8312f4a3f90cf31c38` |
+| Receipt SHA-256 | `b1b92fdb44e6cf8175a7490435f095f592fa42f6964290aa054051d6ccab0f4c` | `81332f88745b148dfd5a1e8b72b93c8aafae71af194519620d4ce9f749a0e3ff` |
+| Native event log SHA-256 | `1417e4cc904d893be8efdd8655b9ff73ba97e373282ab884ed101f8e1afcc876` | `465607beff0ded09a1396e1827daf2bf182a5d754b8335cc5eea4522aacea03a` |
+| Native tokens | 24,268 | 25,028 |
+
+The total was 49,296 tokens against a cap of 350,000. An earlier lead request for `claude-opus-5-6` (request `2a3195d3-82ae-4ad3-97dd-39a4c675783a`) returned API status 404 and zero tokens. That attempt ended before the skeptic, and the successful retry used Opus 5.5.
 
 ## Evidence limits
 
-Claude Code reviewer and skeptic handoff remains unverified. The checks did not exercise interactive setup, controller readback, or the comparative effectiveness campaign. The raw receipts, host event logs, and setup outputs are retained in local delivery scratch. The request IDs and hashes above identify that evidence.
+The checks cover native handoff on these fixtures. They did not exercise interactive setup, controller readback, or the comparative effectiveness campaign. The raw receipts, host event logs, and setup outputs are retained in local delivery scratch. The request IDs and hashes above identify that evidence.
