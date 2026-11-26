@@ -1,12 +1,12 @@
 # Features (history)
 
-Implemented features, archived from `FEATURES.md` so the active backlog stays scannable, together with features retired without shipping, each marked retired. **Archaeological**: read only when consulted. When a feature (or a slice of a sliced feature) ships or is retired, append its entry here rather than to the active file.
+Implemented features, archived from `FEATURES.md` so the active backlog stays scannable, together with retired features, each marked retired. **Archaeological**: read only when consulted. When a feature (or a slice of a sliced feature) ships, or a feature is retired, append its entry here rather than to the active file.
 
-The feature breakout file at `features/<slug>.md` stays in place as the historical design record; the entry here is a brief one-line note on what shipped, or that the feature was retired and why, and in which feature scope or commit. If follow-up work on the same feature changes the design meaningfully, prefer editing the original breakout file (and adding a second entry here for the follow-up) over creating a new file.
+The feature breakout file at `features/<slug>.md` stays in place as the historical design record; the entry here is a brief one-line note on what shipped, that the feature was retired and why, or, for a feature retired after some of its slices shipped, both, and in which feature scope or commit. If follow-up work on the same feature changes the design meaningfully, prefer editing the original breakout file (and adding a second entry here for the follow-up) over creating a new file.
 
 ## Cross-reference resolution
 
-`/nightshift:ready` does **not** parse this file for work; it reads it only for the line-discipline check and the link checks, which verify links into it and count its links as keeping the records they name reachable. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference (see [the repository backlog conventions](../AGENTS.md#project-artifacts-and-backlog)). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
+`/nightshift:ready` does **not** parse this file for work; it reads it only for the line-discipline check and the link checks, which verify links into it and count its links as keeping the records they name reachable. When a feature ships, every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced it is edited at the same time to drop the now-satisfied reference, while each reference to a retired feature is re-decided instead (see the convention in `FEATURES.md`'s `## Requires lines` and `## Slicing` sections). The active `Requires:` lines therefore describe what is *currently* blocking and the dependency graph settles as work ships. This file is purely archaeological; read it when you want to know what already shipped, not to resolve dependencies.
 
 ## Entries
 

@@ -1,8 +1,20 @@
 # Quick wins
 
+Refactors ready to land when time allows. A quick win is always ready for its own pickup, but features and bugs may still list it as a prerequisite.
+
+This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `FEATURES.md`, `BUGS.md`, `PATTERNS.md`). Active entries are kept inline, organized under thematic `##` sections you invent as work emerges. When a quick win lands or is retired, append its entry to [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md), marking a retirement as such, then walk the `**Requires:**` lines in `FEATURES.md` and `BUGS.md` that reference it as `FEATURES.md` describes for a shipped or retired feature and run `/nightshift:ready`; do not move it within this file. Negative-knowledge findings (approaches attempted and reverted) are first-class promotion candidates from the history to the relevant `.nightshift/patterns/<slug>.md` Cautionary tales sections.
+
+Readiness and graduation are not approval. Agree meaningful commitments through an investigated understanding readback or concise spec; preserve valid agreement through compatible corrections and compaction.
+
+Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice so it can receive a scoped repair before handover, such as the targeted unwrap `/nightshift:init-backlog` describes, run on request against the files ready names; inspect the repair's diff and run `/nightshift:ready` again afterwards, since a join can change a hyphenated word or a path without a notice.
+
 V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) and [MIGRATION_STATUS.md](MIGRATION_STATUS.md). Their retained needs are consolidated into the agreed v3 work or its continuations; this is not a statement that old bugs were fixed or proposals shipped.
 
 **Before adding an entry, look for a feature to fold it into.** If an active feature in `FEATURES.md` would remove or rewrite the lines the fix touches, so that the fix would not survive the feature in its current form, add the fix as one line under that feature record's `## Carried fixes` heading, beginning with the name of the slice whose work removes those lines when the feature is sliced, giving the observed failure, its location, what the replacement must do and a link to the evidence, and create no entry here. When the feature would remove only part of what the fix changes, and that part fails and can be verified on its own, carry that part the same way and add an entry here for the rest that names the part carried and links the feature's `## Carried fixes` heading, while the carried line links its evidence rather than that entry, so either can ship first; a fix whose parts cannot be separated stays whole. A feature that merely touches the same module does not qualify, and neither does an Exploring draft, which has not settled what it replaces. A repeat adds a date to that line, never a paragraph. A tenuous match, or a feature invented so there is somewhere to fold into, means an entry here as before. A defect that blocks runs now gets the smallest stopgap, noted on its carried line, without an entry of its own. `FEATURES.md` describes how carried fixes ship and what happens to them when a feature is retired.
+
+Capture shorthand: name the refactor, describe the current smell in a sentence or two, sketch the preferred shape. A reader should be able to start work from the entry alone. Anchor entries on identifiers that survive refactors -- symbol names, entry titles, commit hashes, config keys -- never on line numbers, plan-phase ordinals, bullet positions, or temporal qualifiers ("new", "recent"): a precise locator that rots misleads harder than a coarse one that holds.
+
+**After adding a new entry, run `/nightshift:ready`** from the repo root to confirm it parses as a quick-wins work item against the real grammar in `skills/ready/ready.js`. Quick wins carry neither a `**Requires:**` nor an `**External:**` line, and ready reports one written on a quick win as a notice; the other failure mode to catch is an entry that doesn't parse as a `- ` bullet or `###` heading (ready reports it as a prose-only-section notice) while you can still fix it in the same session.
 
 ## Current
 
@@ -666,4 +678,4 @@ Preserved by the user on 2026-11-26 after closing [the post-completion closing h
 
 ## History
 
-Prior delivered work remains in [QUICK_WINS_HISTORY.md](QUICK_WINS_HISTORY.md).
+Implemented quick wins are archived in [`QUICK_WINS_HISTORY.md`](QUICK_WINS_HISTORY.md), consulted only on demand so the active backlog above stays scannable. When a quick win lands or is retired, append its entry there rather than to this file.

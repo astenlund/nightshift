@@ -1,6 +1,88 @@
 # Features
 
-Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is recorded in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). The original v2 proposals and their agreed dispositions are preserved in [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and [the historical index](migration/v2/FEATURES.md). Readiness is not implementation authority.
+Product-level feature ideas captured during brainstorming. Each entry points at a standalone file under `.nightshift/features/<slug>.md` with the full design sketch. Check this index before proposing new feature directions in the same territory.
+
+This file is **one of four repo-local indexes** agents consult on demand when relevant (alongside `QUICK_WINS.md`, `BUGS.md`, `PATTERNS.md`). Each entry here is a short paragraph summary plus a `**Requires:**` line, an optional `**External:**` line, and optionally a `**Slices:**` block (formal MVP plus continuations; see `## Slicing` below). For features that are partially done without a formal slice breakdown, describe the partial progress in the entry's own prose: there is no separate marker convention for "partially shipped". The detailed design lives in the linked file; keep the summary here consistent with it. When sibling feature files start duplicating a shared concern, promote an umbrella feature record that hosts it and trim the siblings to what differs; a concern that spans feature families belongs in `PATTERNS.md` instead. When a feature (or a slice of a sliced feature) ships, or a feature is retired, append its entry to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); do not keep an `## Implemented` section inline.
+
+Readiness and graduation are not approval. Agree meaningful commitments through an investigated understanding readback or concise spec; preserve valid agreement through compatible corrections and compaction.
+
+Backlog prose is one paragraph or one bullet per physical line, never hard-wrapped at a column: a search hit then shows the whole entry, the parsers anchor on whole lines, and an edit shows as one changed line instead of a reflowed block. `/nightshift:ready` reports a hard-wrapped file as a notice so it can receive a scoped repair before handover, such as the targeted unwrap `/nightshift:init-backlog` describes, run on request against the files ready names; inspect the repair's diff and run `/nightshift:ready` again afterwards, since a join can change a hyphenated word or a path without a notice.
+
+Upcoming work and deferred extensions to the delivered v3 MVP. Its delivery is recorded in [FEATURES_HISTORY.md](FEATURES_HISTORY.md). The original v2 proposals and their agreed dispositions are preserved in [MIGRATION_STATUS.md](MIGRATION_STATUS.md) and [the historical index](migration/v2/FEATURES.md).
+
+## Requires lines
+
+**Every feature index entry carries a `**Requires:**` line** declaring the upstream gates that block the feature. Dependencies are declared here, never in the breakout file. The line is comma-separated and stays on one physical line (the parser joins a wrapped line, but the line discipline above forbids wrapping). Each item is one of two forms:
+
+- A markdown link to a feature, quick win, or bug entry tracked in one of the four indexes. The reference is a current blocker; under the walk-and-remove convention below, a satisfied dependency is edited out of the line at the moment it ships, so `/nightshift:ready` treats every in-backlog reference as actively blocking.
+- The literal word `none.` if there are no upstream gates. An empty label is a structural error; `none.` is the only empty form.
+
+Bare text in `**Requires:**` is a structural error. External primitives (an SDK feature, infrastructure capability, library, hardware, a user decision) go on a separate, optional `**External:**` line directly below it, with the same comma-separated grammar: `**External:** vendor SDK 3.0, hardware enclosure.` Absence is its only empty form, so `none.`, an empty label, or a markdown link in it is a structural error (a link parked there would be invisible to the walk-and-remove convention). A link means an item that is entirely a markdown link; prose that merely contains a link is bare text. `/nightshift:ready` classifies a work unit with at least one in-backlog blocker as Blocked with its externals noted parenthetically, and a work unit with externals and no blocker as External. Every structural error names its remedy.
+
+A missing `Requires:` line is a structural error: every entry must say something. Silence is not the same as `none.`; it indicates the dependency review hasn't been done. The `/nightshift:ready` skill parses these lines to compute the unblocked work set.
+
+**After adding a new entry (or a feature breakout file), and after graduating a draft from `## Exploring`, run `/nightshift:ready`** from the repo root so the bundled `skills/ready/ready.js` validates the post-edit backlog. A new entry must parse and its `**Requires:**` line must resolve. A graduation is incomplete until the selected entry is absent from `exploring`, the selected entry or its unshipped slice work units appear in `ready`, `blocked`, or `external`, the selected entry has no structural error or notice, and the transition introduced no new structural error or notice. Surface pre-existing unrelated problems again, but they do not alone block that graduation. A failed parser invocation, missing work index, missing active classification, selected-entry problem, or newly introduced problem stops graduation until corrected and rechecked.
+
+Downstream relationships (this feature **enables** what) are not encoded structurally. They can be derived by walking the upstream graph in reverse, and over-codifying them creates a second source of truth that drifts. Mention downstream relationships in design prose where they aid understanding.
+
+**Carve-outs:** sections like `## Working hypotheses`, `## Staging`, `## Future directions (not yet designed)`, `## Author tooling`, and `## Exploring` describe pre-feature material (orienting prose, shipping order, shallow placeholders, workflow notes, exploratory brainstorms) rather than ready-to-implement entries. Items in those sections do not carry `Requires:` lines (or, in `## Exploring`'s case, may carry them as historical artifacts only). `/nightshift:ready` ignores the bulleted sections entirely and keeps `## Exploring` out of the readiness set, reporting every draft in a separate list with a linked title and brief context; `/nightshift:exploring` renders them in full. Working hypotheses / Staging / Future directions (not yet designed) / Author tooling are bulleted rather than `###` headings, so the `###`-only candidate filter handles them naturally; `## Exploring` holds `###` entries, collected as drafts and never classified.
+
+Concrete entry shape inside the index. The example shows a feature link, a quick-win link, and an External line to show both lines; a real entry only includes whatever it actually depends on:
+
+```markdown
+### [<Feature name>](features/slug.md)
+
+<Short paragraph summary.>
+
+**Requires:** [other-feature](features/other-feature.md), [shared helper extraction](QUICK_WINS.md#shared-helper-extraction).
+**External:** some external primitive.
+```
+
+**When a feature is implemented or retired**, move its index entry to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), marking a retired feature as retired, never as shipped, with the reason; drop its `Requires:` and `External:` lines in the move (history entries don't need them). The feature file stays in place as a historical design record.
+
+**Then walk every other `**Requires:**` line in `FEATURES.md` and `BUGS.md`** and remove references to the just-shipped feature: if it was the only item on the line, set the line to `**Requires:** none.`. This keeps `Requires:` lines as a literal record of what is *currently* blocking and means `/nightshift:ready` never needs to consult the history file. A retired feature satisfies nothing: for each entry that references it, decide whether that entry still needs the work, then point the reference at the entry that now carries it, move the need to an `**External:**` line, or remove the reference with a sentence in the entry's prose saying why it no longer applies. Run `/nightshift:ready` after the move to confirm the walk left no stale reference.
+
+**Partially-implemented features** have two routes. If the shipped and remaining work is scoped clearly enough to name a named MVP plus named continuations, use the formal `**Slices:**` block described in `## Slicing` below; `/nightshift:ready` then expands per-slice work units and downstream features can reference specific slices via the `[Feature: slice-name]` link suffix. If the shipped work is real but not yet sliceable (e.g., one layer landed, remaining layers are a wishlist not a planned breakdown), describe the partial progress in the entry's own prose without any special markers. `/nightshift:ready` treats such entries as the `**Requires:**` line dictates; partial progress is editorial context for the reader, not a machine-readable signal.
+
+## Slicing
+
+Features that bundle multiple shippable layers under one design split into a named **MVP** plus one or more **continuations**. The MVP is the smallest surface that unblocks downstream features whose `Requires:` line points at this feature; continuations layer extensions on top.
+
+A sliced feature entry carries a `**Slices:**` block listing each slice (MVP first, then continuations) with one or two sentences on what each delivers. The entry's `**Requires:**` line reflects the *next-to-ship* slice (initially MVP).
+
+After MVP ships, the MVP entry moves to [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md); the MVP bullet in the parent's `**Slices:**` block is struck through with a pointer to the history file; the parent entry stays in its themed section; the top-level `**Requires:**` and `**External:**` lines advance to the next-to-ship slice's gates; and every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` that referenced the just-shipped slice (bare-link defaults to MVP) is edited to drop the now-satisfied reference. When later continuations have independent gates (they can ship in any order rather than sequentially), each slice bullet may carry inline `**Requires:**` and `**External:**` annotations for documentation. Example shape post-MVP:
+
+````
+**Slices:**
+
+- ~~MVP - floating-reference core.~~ (Shipped; see FEATURES_HISTORY.md.)
+- **Re-anchor events.** Manual UI re-anchor + `AnchorEvent` plumbing.
+- **Late-join replay.** `GetSessionHistory` pull endpoint.
+- **`RepertoireChordSource`.** Drop-in replacement consuming chart repertoire.
+  **Requires:** [chart-repertoire](features/chart-repertoire.md).
+
+**Requires:** none.
+````
+
+Downstream features that need a specific continuation (not just the MVP) encode the slice name in the link's display text:
+
+```
+[feature-title: continuation name](features/slug.md)
+```
+
+A link without a `: slice-name` suffix resolves to the MVP: the default unblock point.
+
+As each slice ships, append a line to `FEATURES_HISTORY.md`:
+
+```
+- [Feature title: slice name](features/slug.md): brief note.
+```
+
+The parent entry stays in its themed section until the **last** slice ships, at which point it graduates with the final history line.
+
+Slices are not retired one at a time, since a struck bullet reads as shipped. Dropping an unshipped slice changes the feature's design, so re-slice the entry as a whole, as this section defines a slicing from scratch, with a first bullet the others build on that depends on no other slice of the feature and no cycle among the rest, and review everything that depends on its slices before removing the dropped bullet: the gates of every remaining unshipped slice, which must name anything the dropped slice would have supplied, since the implicit MVP gate carries nothing over, with the top-level `**Requires:**` and `**External:**` lines advanced to the new first unshipped slice's gates as when a slice ships, since they are the only gates `/nightshift:ready` reads for it; the carried fixes that name a slice, each reassigned to a remaining slice or triaged again as when a feature is retired; and every `**Requires:**` line elsewhere that links the feature, since a bare link resolves to whichever bullet is first, or one of its slices, each re-decided as a retired feature's references are under `## Requires lines`. Record in the entry's prose why the slice was dropped. When no unshipped slice remains, the parent moves to the history file with an entry naming the slices that shipped and those dropped, and each carried fix still in its record, named or not, is triaged again as when a feature is retired; a feature retired with slices still unshipped moves there as a retired feature. Run `/nightshift:ready` once the edit, and any move to the history file, is done.
+
+`/nightshift:ready` reads the top-level `**Requires:**` and `**External:**` lines and any inline `**Requires:**` and `**External:**` annotations on slice bullets, then reports each unshipped slice as a separate work unit (`[Feature title: slice name]`). A slice is "unshipped" when its bullet in the `**Slices:**` block is *not* struck through; the strikethrough is the live slice-status indicator that `/nightshift:ready` reads. The **first unshipped slice** (top-most non-struck bullet) uses the top-level lines as its gates; other unshipped slices use their inline annotations if present, or have no extra gates if no annotation. All non-MVP slices **implicitly depend on MVP being struck through**, regardless of top-level or inline gates; a continuation is never reported as Ready while MVP is unshipped. A slice may declare an inline `**Requires:**` pointing at another slice of the same feature via the suffixed-link form, useful when one continuation builds directly on another; resolve the reference by checking whether the target slice's bullet is struck through. Keep a feature's slice dependencies acyclic, counting the top-level lines, inline annotations and the implicit MVP gate together: `/nightshift:ready` does not detect a cycle among the slices of one feature, so slices that wait on each other stay Blocked while its check passes. As each slice ships, append its entry to `FEATURES_HISTORY.md`, strike through its bullet in the parent's `**Slices:**` block, advance the top-level `**Requires:**` and `**External:**` lines to the new next-to-ship slice's gates (dropping `**External:**` when that slice declares none), and walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md` to drop now-satisfied references.
 
 ## Folding fixes into features
 
@@ -326,6 +408,8 @@ One breaking release that cuts a new store version refusing older ones, deletes 
 
 ## Exploring
 
+Pre-dependency-analysis brainstorms live here. An entry is a draft feature whose breakout file carries `status: exploring` in its frontmatter; the design is being firmed up and a `**Requires:**` line isn't expected yet. `/nightshift:ready` lists every draft separately with a linked title and brief context in an Exploring section, never in the readiness set, and `/nightshift:exploring` renders the full draft list. When the user agrees to graduate a draft, its meaningful commitments settled and its upstream gates ready to declare, move it out of `## Exploring` into the appropriate themed `##` section, add the `**Requires:**` line, and an `**External:**` line for any external gate, unless it graduates as a quick win, which carries neither, and drop the `status: exploring` frontmatter on the breakout file. The post-edit `/nightshift:ready` gate in `## Requires lines` is part of graduation, not a later cleanup.
+
 ### [User-configurable model policy file](features/model-policy-file.md)
 
 Move the model admission policy into a file the user can edit, with role-keyed allowlists, a general allow list and a deny list, once the universal strong-model category is replaced by approval for each role. Merged at the first pruning pass on 2026-11-11, by the user's decision, from the current entry of this name and the Exploring draft "Complete the per-role model approval migration", since each named the other's central question: the 2026-10-26 VISION direction replaces the strong category with approval per role, so the file's format waits on each role's allowlist format, and the entry returns to Exploring until that is settled. The commitments agreed on 2026-10-03 carry over as settled points to reconcile with it: one user-wide JSON file of additions to and removals from the shipped defaults, a project file that may only narrow it, refusal on a malformed file, the deny list winning, a clash with an explicit user requirement put to the user, receipts recording the policy in force, and the escape hatch that, when no model on the strong list can take a review role and the user is present, offers to add a model the user can use to the user-wide list after saying that this lowers the review bar for all future work. Open: each role's allowlist format, evaluation and surfacing, what replaces the retired terminology at each site, and compatibility with existing runs and receipts. It changes runtime behavior that governs the review gate, so it needs a concise governing spec, a version increase and a decision on installed-host evidence before implementation.
@@ -512,4 +596,4 @@ Raised by the user on 2026-11-23, in a discussion of [the assessment](reports/as
 
 ## History
 
-Delivered features belong in [FEATURES_HISTORY.md](FEATURES_HISTORY.md), as do features retired without shipping, each marked retired. When shipping or retiring an entry, remove references to it from the active indexes' Requires lines.
+Implemented features are archived in [`FEATURES_HISTORY.md`](FEATURES_HISTORY.md), loaded on demand so the active backlog above stays scannable. When a feature (or slice) ships, or a feature is retired, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove a shipped entry's now-satisfied reference (if it was the only one, set the line to `**Requires:** none.`) and re-decide each reference to a retired one as `## Requires lines` describes. The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as features ship.
