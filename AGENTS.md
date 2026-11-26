@@ -22,18 +22,14 @@ Project-owned Nightshift artifacts live under `.nightshift` on both hosts. Host-
 
 **Current focus (set 2026-10-20).** For the time being, the focus in this repository is working through [the assessment](.nightshift/reports/assessment-20261018.md) and [its worklist](.nightshift/reports/assessment-worklist-20261018.md); the backlog is secondary until the user says otherwise. When the user invokes the `ready` skill here, remind them of this focus before presenting the ready set, and still present it. Remove this paragraph when the user ends this focus.
 
-Consult relevant indexes before proposing or starting related work:
+Consult relevant indexes before proposing or starting related work, and follow the conventions each index states when editing it:
 
 - [FEATURES.md](.nightshift/FEATURES.md): features and Exploring drafts, with design records under `.nightshift/features`.
 - [BUGS.md](.nightshift/BUGS.md): known defects; longer diagnoses belong under `.nightshift/bugs`.
 - [QUICK_WINS.md](.nightshift/QUICK_WINS.md): smaller work items.
 - [PATTERNS.md](.nightshift/PATTERNS.md): reusable concerns spanning features, with supporting files under `.nightshift/patterns`.
 
-Keep index excerpts consistent with their feature or bug records. Share genuinely repeated design concerns through a pattern or family umbrella instead of duplicating them. Readiness and graduation are not implementation authority. Exploring entries remain outside the ready set until their commitments and dependencies are settled.
-
-Dependency declarations belong in the indexes, not breakout files. Preserve the `Requires`/`External` grammar and use the real ready parser to evaluate it. When work ships or a bug is fixed, move its entry to the corresponding `FEATURES_HISTORY.md`, `QUICK_WINS_HISTORY.md` or `BUGS_HISTORY.md`, remove satisfied dependency references from active indexes, and re-run the parser. Retired proposals are recorded as retired, never as shipped or fixed. [MIGRATION_STATUS.md](.nightshift/MIGRATION_STATUS.md) and [V3-MIGRATION.md](V3-MIGRATION.md) retain the v2 dispositions; `.nightshift/migration/v2` holds the original indexes and, under `features/`, the retired and replaced v2 records that no active entry tracks.
-
-Keep backlog paragraphs and bullets on single physical lines. Run `unwrap.js` against the relevant file for hard-wrap repairs, inspect its diff, then run ready again. Initialization does not automatically unwrap existing prose.
+[MIGRATION_STATUS.md](.nightshift/MIGRATION_STATUS.md) and [V3-MIGRATION.md](V3-MIGRATION.md) retain the v2 dispositions; `.nightshift/migration/v2` holds the original indexes and, under `features/`, the retired and replaced v2 records that no active entry tracks.
 
 Feature brainstorming belongs in feature records; new standalone governing specs belong in `.nightshift/specs`, and durable acceptance reports belong in `.nightshift/reports`. Respect explicitly selected document locations.
 
