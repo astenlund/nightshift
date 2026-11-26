@@ -6,3 +6,4 @@
 /.nightshift/runs/
 /.nightshift/inbox/
 /.nightshift/plans/
+/.nightshift/.nightshift-unwrap-lock.sqlite*
