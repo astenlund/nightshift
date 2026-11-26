@@ -78,7 +78,7 @@ Every statement of these claims changes with this release: which record statuses
 ## Related tracked work
 
 - **Hold, stop and block on a complete record.** The quick win "Decide whether hold, stop and block are admitted on a complete record" decides whether those operations should be refused there. Until it does, this spec counts a task reopened since completion as held work and names neither `hold` nor `stop` as a route.
-- **Shared-allowance lockout.** The bug "A store past the shared input allowance with no verdict progress cannot be closed or handed over" tracks the lockout the administrative close paragraph accepts.
+- **Shared-allowance lockout.** [Cut store v4 and reduce the release system](../features/store-v4-cut.md#carried-fixes) carries the fix for the lockout the administrative close paragraph accepts, folded there on 2026-11-27 from the bug that tracked it.
 - **Unreadable evidence bodies.** The bug "A modern record with unreadable evidence has no administrative route" tracks the lockout this spec leaves: close refuses a held or unauthenticated delivery while an evidence body its saved state references cannot be read, and retirement does not take a modern record, so such a delivery, once it blocks handover under commitments 1 and 2, has no administrative route.
 
 ## Verification and release
