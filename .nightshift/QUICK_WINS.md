@@ -6,6 +6,10 @@ V2 entries are preserved in [the historical index](migration/v2/QUICK_WINS.md) a
 
 ## Current
 
+### Review all active bugs and quick wins for closure
+
+Raised by the user on 2026-11-26 during the [review model delivery](specs/review-model.md). Review every active entry in [BUGS.md](BUGS.md) and [QUICK_WINS.md](QUICK_WINS.md) against current behavior, accepted commitments and the effective review model. For each closure candidate, cite the evidence and explain whether it was fixed, superseded, duplicated or no longer warrants work in a supported workflow. Bring candidates to the user for individual decisions before retiring entries. This one-time audit is separate from the [whole-backlog coherence audit feature](features/backlog-coherence-audit.md).
+
 ### Name every docs-gate cause when a closing check also fails
 
 Deferred as minor in delivery `ffb10269` on 2026-11-09 and tracked by the user's triage decision. In `internal/runtime/lifecycle.js`, `docsCause` returns only kind `check` when the latest docs review belongs to the closing record and a check on that record fails, so a docs gate that is also unmet for another reason names the check alone, and the other cause surfaces only after the check is fixed. Report every cause of the refusal, with a test for the combination. Runtime code, so it ships with a version increase; tracking does not authorize implementation.
