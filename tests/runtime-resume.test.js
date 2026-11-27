@@ -1604,16 +1604,53 @@ test('a repaired minor closing finding is carried across a replaced closing reco
   const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
 
   // Act
-  // A clean lore assessment fresh against the whole inventory lets the re-recorded triage take a new baseline.
+  // An incomplete closing review has not seen the repair; then a clean lore assessment fresh against the whole inventory lets the
+  // re-recorded triage take a new baseline.
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore'], { status: 'incomplete' }));
   f.review('lore', f.assessment('code', ['lore']));
   f.act({ action: 'triage', evidence: 'Triage recorded again' });
   const carried = f.store.read().closing.docs.findings.find(item => item.id === repaired.id);
+  const route = routing(obligationBrief(f.store.read()).closing.docsReview.review);
   const beforeFresh = attempt();
   f.review(CLOSING_TARGET, f.assessment('docs', ['lore']));
   const afterFresh = attempt();
 
   // Assert
-  assert.deepEqual({ carried: Boolean(carried?.repaired), beforeFresh, afterFresh }, { carried: true, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
+  assert.deepEqual({ carried: Boolean(carried?.repaired), route, beforeFresh, afterFresh }, { carried: true, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['docs'] }, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
+});
+
+test('a mixed closing batch whose resumed review saw every repair is not carried across a replaced closing record', t => {
+  // Arrange
+  // A run of one lore task has no docs gate, so only the closing record can require a docs-kind assessment of the repairs.
+  const f = lifecycleFixture(t, [{ id: 'lore', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Accepted retrospective' } }]);
+  f.act({ action: 'start-task', taskId: 'lore' });
+  f.act({ action: 'advance', taskId: 'lore', evidence: 'The requested retrospective is recorded' });
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up.\n');
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore'], { findings: [finding('dating', 'critical'), finding('wording', 'minor')] }));
+  const raised = f.store.read().closing.docs.findings;
+  for (const item of raised) f.act({ action: 'validate', taskId: CLOSING_TARGET, findingId: item.id, validation: { session: 'closing-skeptic', attributionVerified: true, verdict: 'confirmed', evidence: 'The entry misleads a reader', repairProposal: 'Correct the entry', snapshot: snapshot(f.root, ['.nightshift/BUGS.md']) } });
+  for (const item of raised) f.act({ action: 'dispose', taskId: CLOSING_TARGET, findingId: item.id, disposition: 'implement', reason: 'Worth fixing', obligation: { classification: 'required', basis: 'Backlog conventions' } });
+  f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up, dated and reworded.\n');
+  f.act({ action: 'repair', taskId: CLOSING_TARGET, findingIds: raised.map(item => item.id) });
+  const [dating, wording] = ['dating', 'wording'].map(local => raised.find(item => item.localId === local));
+  f.review(CLOSING_TARGET, f.continued('docs', ['lore'], { lineage: dating.raisedBy.lineage, closures: [{ id: dating.id, closed: true, evidence: 'The entry is dated' }] }));
+  const closedByResume = f.store.read().closing.docs.findings.find(item => item.id === dating.id);
+  const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
+
+  // Act
+  // A clean lore assessment fresh against the whole inventory lets the re-recorded triage take a new baseline.
+  f.review('lore', f.assessment('code', ['lore']));
+  f.act({ action: 'triage', evidence: 'Triage recorded again' });
+  const carried = f.store.read().closing.docs.findings.filter(item => item.repaired).map(item => item.localId).sort();
+  const completed = attempt();
+
+  // Assert
+  // The resumed review closed the critical repair and reassessed the minor one with the rest of the change, so the replaced record, whose
+  // new baseline the whole-inventory assessment covers, carries neither and owes no further closing review.
+  assert.deepEqual({ pendingClosure: closedByResume.pendingClosure, closed: closedByResume.closures?.at(-1)?.closed }, { pendingClosure: undefined, closed: true });
+  assert.deepEqual({ carried, completed }, { carried: [], completed: 'complete' });
 });
 
 test('a closing finding carried across a reset record keeps its validation snapshot as stored evidence', t => {

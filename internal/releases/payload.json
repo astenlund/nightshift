@@ -185,8 +185,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 197727,
-      "sha256": "35b9ecb9a24ceebb5deafd8d063299e8212dbd8aa2869c14b6bb32a601533b4f"
+      "bytes": 197915,
+      "sha256": "9491295d9b5db50f35f90bc2cf5939b5355eead430af5c4664dd25902281e906"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -335,8 +335,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 122697,
-      "sha256": "e7c80068af84cfc9c34e93374db35ecad42497d5abcf3a4b812522e919824857"
+      "bytes": 123437,
+      "sha256": "b7d50cf0fcfdd359c8feb2b6dc22443c3fb9ad1f47fc02fbdc67a9f8e9a50f7d"
     },
     {
       "path": "internal/runtime/limits.js",

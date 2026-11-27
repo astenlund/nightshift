@@ -338,7 +338,8 @@ function dischargeCauses(state, snapshotValid, options = {}) {
     const review = latestClosingReview(closing, state);
     if (review && (!completeAssessment(review) || review.attributionVerified !== true || !DIMENSIONS.docs.every(dimension => review.dimensions?.includes(dimension)))) add('work', 'review', review.requestId ?? null, 'The latest closing review is incomplete, unattributed or missing a docs dimension', ['closing', 'dispatch', 'review']);
     else if (review && !snapshotValid(review.snapshot)) add('evidence', 'evidence', review.requestId ?? null, 'The latest closing review has an invalid snapshot');
-    for (const finding of closing.findings.filter(item => awaitsClosingReview(item, review))) add('work', 'finding', finding.id, `Closing finding ${finding.id} was repaired after the latest closing review`, ['closing', 'dispatch', 'review']);
+    const seen = latestCompleteClosingReview(closing, state);
+    for (const finding of closing.findings.filter(item => awaitsClosingReview(item, seen))) add('work', 'finding', finding.id, `Closing finding ${finding.id} was repaired after the latest complete closing review`, ['closing', 'dispatch', 'review']);
   }
 
   return causes;
@@ -381,15 +382,20 @@ function resetClosing(state) {
 // requires each settled and closed, so replacing the record must carry that obligation rather than clear it.
 function carriedFindings(state) {
   const record = state.closing?.docs;
-  const latest = record ? latestClosingReview(record, state) : null;
-  return [...(state.closing?.carriedFindings ?? []), ...(record?.findings ?? []).filter(finding => !settled(finding) || finding.pendingClosure || awaitsClosingReview(finding, latest))];
+  const seen = record ? latestCompleteClosingReview(record, state) : null;
+  return [...(state.closing?.carriedFindings ?? []), ...(record?.findings ?? []).filter(finding => !settled(finding) || finding.pendingClosure || awaitsClosingReview(finding, seen))];
 }
 
-// Whether a closing finding's repair still awaits a closing review later than it, given its record's latest closing review, if any. A
-// repaired finding owing no pending closure, such as a repaired minor one, carries that obligation itself, including across a replaced
-// record, where no review of the new record has yet seen its repair.
-function awaitsClosingReview(finding, latest) {
-  return finding.repaired === true && (!latest || finding.repairRevision >= latest.revision);
+// Whether no complete closing review has seen a closing finding's repair, given its record's latest complete closing review, fresh or
+// continued, if any. A repaired finding owing no pending closure, such as a repaired minor one, carries that obligation itself, also
+// across a replaced record, which has no review that saw it. Once a complete review postdates the repair, the record's own gate, which
+// accepts only a fresh latest review, and the triage baseline's coverage decide the rest, as for a finding whose closure was recorded.
+function awaitsClosingReview(finding, seen) {
+  return finding.repaired === true && (!seen || finding.repairRevision >= seen.revision);
+}
+
+function latestCompleteClosingReview(record, state) {
+  return latestReview(record.reviews.filter(review => !review.relevance && review.status === 'complete').map(review => ({ review })), state)?.review;
 }
 
 function recordRetrospective(state, evidence) {
@@ -599,7 +605,7 @@ function closingRecordFailure(root, state, { ignoreChecks = false } = {}) {
   const latest = latestClosingReview(record, state);
   if (latest && (!completeAssessment(latest) || !coversDimensions(latest, 'docs'))) return 'unmet';
   if (!record.findings.every(settled) || record.findings.some(finding => finding.pendingClosure)) return 'unmet';
-  if (record.findings.some(finding => awaitsClosingReview(finding, latest))) return 'unmet';
+  if (record.findings.some(finding => awaitsClosingReview(finding, latestCompleteClosingReview(record, state)))) return 'unmet';
   return ignoreChecks || verificationGate(root, record) ? null : 'unmet';
 }
 
@@ -755,10 +761,13 @@ function freshAssessmentTask(state, task, kind, target) {
 function reviewProgress(root, state, target, options = {}) {
   const findings = target.findings;
   const latest = latestByKind(target, state);
-  // A finding repaired at or after the latest assessment of its kind with no closure pending, such as a repaired minor finding, is
-  // settled only by a fresh assessment of that kind, as the gate's repair check requires.
-  const repairedSince = (kind, review) => findings.some(finding => finding.repaired && !finding.pendingClosure && findingKind(finding, target) === kind && finding.repairRevision >= review.revision);
-  const freshDue = [...latest].filter(([kind, review]) => review.continues || repairedSince(kind, review)).map(([kind]) => kind);
+  // A finding repaired with no closure pending, such as a repaired minor finding, is settled only by a fresh assessment of its kind later
+  // than its repair, as the gates demand; a record with no assessment of that kind, such as a replaced closing record carrying it, has
+  // none that saw the repair.
+  const awaiting = findings.filter(finding => finding.repaired && !finding.pendingClosure);
+  const kinds = [...new Set([...latest.keys(), ...awaiting.map(finding => findingKind(finding, target))])];
+  const repairedSince = (kind, review) => awaiting.some(finding => findingKind(finding, target) === kind && (!review || finding.repairRevision >= review.revision));
+  const freshDue = kinds.filter(kind => latest.get(kind)?.continues || repairedSince(kind, latest.get(kind)));
   const owing = [...new Set(findings.filter(finding => finding.pendingClosure).map(finding => finding.pendingClosure.lineage))];
   const resumeTargets = owing.map(lineage => {
     const requestId = latestDispatchOf(root, state, target, lineage);

@@ -1,5 +1,5 @@
 {
   "rule": "settled-record-verdict-1",
-  "digest": "1601877a49fec970db5ab26f35de70b670818e1b1126d9fb8af74051fbe48ec5",
-  "statement": "What the vouched checks accept and refuse is unchanged for every record an earlier release could write; this release changes which pending closures `repair` writes, its admission and status routing, and holds a repaired closing finding with no later closing review on its record, a state only this release's minor repairs produce."
+  "digest": "7319217350b82fad642d8182ae0c5a31f55a0c26460a4feaf9ff796b1a5a53f2",
+  "statement": "What the vouched checks accept and refuse is unchanged for every record an earlier release could write; this release changes which pending closures `repair` writes, its admission and status routing, and carries a repaired closing finding that no complete closing review has seen across a replaced closing record, a state only this release's minor repairs produce."
 }
