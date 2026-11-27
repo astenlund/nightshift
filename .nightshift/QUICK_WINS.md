@@ -492,7 +492,7 @@ Recorded on 2026-11-03, agreed at the user's inbox triage that day, from the mai
 
 Refuse a revision mismatch with the existing `stale-state` refusal ("Run changed; read current obligations before retrying"), keeping `stale-owner` for an identity mismatch. Runtime changes ship with a version increase. Tracking does not authorize implementation.
 
-The wording misled again in Hermes delivery `2b1f0df2` on 3.3.40 (item 3 of the maintainer inbox report `2026-11-19-closing-review-probe-and-revision-races.md`), whose cause the user's pruning pass of 2026-11-27 moved to the Stop hook line of [the store cut's carried fixes](features/store-v4-cut.md#carried-fixes) as a dated repeat.
+The wording misled again in Hermes delivery `2b1f0df2` on 3.3.40 (its `stale-owner` refusals after long checks, in the maintainer inbox report `2026-11-19-closing-review-probe-and-revision-races.md`), whose cause the user's pruning pass of 2026-11-27 moved to the Stop hook line of [the store cut's carried fixes](features/store-v4-cut.md#carried-fixes) as a dated repeat.
 
 ### Make the ready parser usable as a delivery check
 
