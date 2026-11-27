@@ -161,6 +161,29 @@ for (const [label, alter, expected] of [
   }
 });
 
+for (const historical of [false, true]) test(`an unchanged retry of a closing review returns the recorded state, historical=${historical}`, async t => {
+  // Arrange
+  const f = fixture(t);
+  completeTask(f);
+  close(f);
+  const run = (request, overrides) => executeWithFixtureController(f.root, { actor, revision: f.store.read().revision, ...request }, overrides);
+  const review = { kind: 'docs', baseSha: f.baseSha, requirements: 'Tracking edits after triage', rules: 'Do not edit reviewed inputs.', candidates: [{ host: 'claude', model: 'claude-fable-5-1', effort: 'high' }] };
+  const dispatched = await run({ action: 'dispatch', taskId: CLOSING_TARGET, review }, { runAgent: agent([], DIMENSIONS.docs) });
+  const receipt = path.relative(f.root, dispatched.receiptFile).split(path.sep).join('/');
+  // A tracking edit after the dispatch makes the import historical: its inputs no longer match the record.
+  if (historical) f.write(BACKLOG, '# Bugs\n\nTracked after the closing review was dispatched.\n');
+  await run({ action: 'review', taskId: CLOSING_TARGET, receipt });
+  const recorded = f.store.read();
+
+  // Act
+  const retried = await run({ action: 'review', taskId: CLOSING_TARGET, receipt }).then(state => state, error => error);
+
+  // Assert
+  assert.equal(retried instanceof Error ? retried.code : null, null);
+  assert.equal(f.store.read().revision, recorded.revision);
+  assert.equal(f.store.read().closing.docs.reviews.length, recorded.closing.docs.reviews.length);
+});
+
 test('a closing review receives the closing record\'s own checks beside those of the tasks it covers', async t => {
   // Arrange
   const f = fixture(t);
