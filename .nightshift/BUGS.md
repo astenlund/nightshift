@@ -592,6 +592,14 @@ A likely fix keys "repaired after the latest assessment of its kind" on a per-re
 
 **Requires:** none.
 
+### The review-model test of a moved checkout fails intermittently with EPERM
+
+Observed twice on 2026-11-27 during delivery `a92716e9` and tracked by the user's decision at its triage. In the recorded Runtime tests check, `tests/runtime-review-model.test.js` "a moved checkout with a completed setup but no review-model lock can establish one at its original path" threw `EPERM` renaming its fixture directory under `.tmp/review-model-tests` to a `-before-review-model` sibling; each immediate rerun passed every test. The change under delivery touched neither that test nor the setup code it exercises. The cause, perhaps another process briefly holding a handle in the fixture directory on Windows, is unconfirmed.
+
+Make the fixture move tolerate a transient `EPERM` on Windows, or move the fixture without renaming a directory a just-finished child may still hold, then confirm by repeated runs. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Fixed bugs are archived in [`BUGS_HISTORY.md`](BUGS_HISTORY.md), loaded on demand so the active list above stays scannable. When a bug is fixed or retired, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove a fixed bug's now-satisfied reference (if it was the only one, set the line to `**Requires:** none.`) and re-decide each reference to a retired one as `## Requires lines` describes. The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as bugs are fixed.
