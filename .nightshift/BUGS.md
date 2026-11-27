@@ -584,6 +584,14 @@ Decide whether such a record gets an administrative route, such as a close that 
 
 **Requires:** none.
 
+### A minor finding re-validated after its repair loses its repair marker
+
+Noticed by the controller on 2026-11-27 while tracing `validate` and the gate's repair check in `internal/runtime/lifecycle.js` during delivery `a92716e9`, which built candidate 3.3.45; no reviewer raised it and it has not been reproduced. The user chose to track it at that run's triage. `validate` clears a finding's `repaired` flag and `repairRevision`. Under the earlier rule a repaired finding also carried pending closure, which survives re-validation, so a resumed closure still followed. On records created by 3.3.45 a repaired minor finding carries no pending closure, so when a dialogue turn re-validates it after its repair and the controller then disposes it skip or refuted, the gate's check that an assessment of the kind postdates the repair no longer sees the repair. Where the repair touched only documentation paths, which a code assessment ignores for currency, an assessment from before the repair can then pass the gate. The task's `lastRepair` still records the batch.
+
+A likely fix keys "repaired after the latest assessment of its kind" on a per-record repair record that re-validation does not clear, rather than on finding state. Runtime changes ship with a version increase. Tracking does not authorize implementation.
+
+**Requires:** none.
+
 ## History
 
 Fixed bugs are archived in [`BUGS_HISTORY.md`](BUGS_HISTORY.md), loaded on demand so the active list above stays scannable. When a bug is fixed or retired, append its entry there rather than to this file, AND walk every other `**Requires:**` line in `FEATURES.md` / `BUGS.md`: remove a fixed bug's now-satisfied reference (if it was the only one, set the line to `**Requires:** none.`) and re-decide each reference to a retired one as `## Requires lines` describes. The active `Requires:` lines describe what is *currently* blocking, so `/nightshift:ready` never has to consult the history file; the dependency graph settles as bugs are fixed.
