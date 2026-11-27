@@ -1590,6 +1590,32 @@ test('a repaired minor finding of the closing record owes no closure and holds c
   assert.deepEqual({ pendingClosure: repaired.pendingClosure, route, beforeFresh, afterFresh }, { pendingClosure: undefined, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['docs'] }, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
 });
 
+test('a repaired minor closing finding is carried across a replaced closing record and still holds completion until a fresh closing review', t => {
+  // Arrange
+  // A run of one lore task has no docs gate, so only the closing record can require a docs-kind assessment of the repair.
+  const f = lifecycleFixture(t, [{ id: 'lore', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Accepted retrospective' } }]);
+  f.act({ action: 'start-task', taskId: 'lore' });
+  f.act({ action: 'advance', taskId: 'lore', evidence: 'The requested retrospective is recorded' });
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up.\n');
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore'], { findings: [finding('wording', 'minor')] }));
+  const repaired = repairLatestFinding(f, CLOSING_TARGET, '.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up, reworded.\n');
+  const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
+
+  // Act
+  // A clean lore assessment fresh against the whole inventory lets the re-recorded triage take a new baseline.
+  f.review('lore', f.assessment('code', ['lore']));
+  f.act({ action: 'triage', evidence: 'Triage recorded again' });
+  const carried = f.store.read().closing.docs.findings.find(item => item.id === repaired.id);
+  const beforeFresh = attempt();
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore']));
+  const afterFresh = attempt();
+
+  // Assert
+  assert.deepEqual({ carried: Boolean(carried?.repaired), beforeFresh, afterFresh }, { carried: true, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
+});
+
 test('a closing finding carried across a reset record keeps its validation snapshot as stored evidence', t => {
   // Arrange
   const f = lifecycleFixture(t, [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior' } }]);
