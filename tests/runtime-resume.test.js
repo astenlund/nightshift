@@ -1549,6 +1549,11 @@ function repairLatestFinding(f, taskId, file, content) {
 
 const routing = review => ({ next: review.next, resumeTargets: review.resumeTargets, freshDue: review.freshDue });
 
+// Records the dispatch of a fixture assessment at the current revision, as a real dispatch registers its reviewer before it assesses.
+const registerDispatch = (f, assessment) => f.store.update(actor, f.store.read().revision, 'fixture-dispatch-registration', state => {
+  state.workers.push({ id: assessment.requestId, session: assessment.session, assignment: 'Fixture assessment', role: 'reviewer', writes: [], host: 'claude', status: 'complete', registeredRevision: state.revision });
+});
+
 test('a repaired minor finding of a spec task owes no closure and goes to a fresh whole-spec assessment', t => {
   // Arrange
   const f = lifecycleFixture(t, [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md' } }]);
@@ -1629,8 +1634,9 @@ test('a closing review assessed before a minor closing repair and imported after
   f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
   f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up.\n');
   f.review(CLOSING_TARGET, f.assessment('docs', ['lore'], { findings: [finding('wording', 'minor')] }));
-  // A second closing reviewer assesses the record before the repair and reports only after it.
+  // A second closing reviewer is dispatched and assesses the record before the repair, and reports only after it.
   const stale = f.assessment('docs', ['lore']);
+  registerDispatch(f, stale);
   const repaired = repairLatestFinding(f, CLOSING_TARGET, '.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up, reworded.\n');
   const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
 
@@ -1647,6 +1653,29 @@ test('a closing review assessed before a minor closing repair and imported after
 
   // Assert
   assert.deepEqual({ carried: Boolean(carried?.repaired), beforeFresh, afterFresh }, { carried: true, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
+});
+
+test('a code assessment dispatched before a minor repair to a documentation path does not pass the gate when imported after it', t => {
+  // Arrange
+  // On a run with the docs gate a code assessment ignores documentation paths, so only the dispatch order shows what it saw.
+  const f = lifecycleFixture(t, [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior' } }]);
+  f.check('code');
+  f.review('code', f.assessment('code', ['code'], { findings: [finding('wording', 'minor')] }));
+  const stale = f.assessment('code', ['code']);
+  registerDispatch(f, stale);
+  repairLatestFinding(f, 'code', '.nightshift/BUGS.md', '# Bugs\n\nReworded operating note.\n');
+  const gate = () => reviewGate(f.root, f.task('code'), f.store.read());
+
+  // Act
+  f.review('code', stale);
+  const afterStale = { gate: gate(), route: routing(obligationBrief(f.store.read()).next.find(item => item.id === 'code').review) };
+  const fresh = f.assessment('code', ['code']);
+  registerDispatch(f, fresh);
+  f.review('code', fresh);
+
+  // Assert
+  assert.deepEqual(afterStale, { gate: false, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['code'] } });
+  assert.equal(gate(), true);
 });
 
 test('a mixed closing batch whose resumed review saw every repair is not carried across a replaced closing record', t => {

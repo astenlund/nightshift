@@ -244,12 +244,8 @@ function specTaskReadiness(state, spec, task, resolved) {
 
     return unready(spec.id, predates ? `the assessment of ${spec.id} predates its requirements revision ${spec.requirementsRevision}` : `the assessment of ${spec.id} no longer matches its commitments`, freshAssessment);
   }
-  // A dispatched assessment examined its inputs when it was registered, so a late import of one dispatched before the amendment
-  // still predates it. A dispatch record without a usable registration cannot show when its inputs were examined, so it predates
-  // every amendment; an assessment without any dispatch record is dated by its import.
-  const worker = state.workers?.find(candidate => candidate.id === review.requestId);
-  const registered = worker?.registeredRevision;
-  const assessedAt = !worker ? review.revision ?? -1 : Number.isSafeInteger(registered) ? Math.min(registered, review.revision ?? registered) : -1;
+  // A late import of an assessment dispatched before the amendment still predates it.
+  const assessedAt = lifecycle.assessedRevision(state, review);
   // Every code task this spec task governs shares its assessment, so an amendment to any of them holds them all, as reopening would.
   const governed = governedBy(state.tasks, resolved, spec.id);
   const amended = governed.filter(candidate => candidate.requirementsRevision !== undefined && assessedAt < candidate.requirementsRevision);
@@ -272,7 +268,7 @@ function specTaskReadiness(state, spec, task, resolved) {
   const raised = state.tasks.flatMap(owner => owner.findings).filter(finding => finding.reviewRevision === review.revision);
   const open = [...new Set([...own, ...raised].filter(finding => !lifecycle.settled(finding) || finding.pendingClosure).map(finding => finding.id))];
   if (open.length > 0) return unready(spec.id, `spec findings remain unsettled or unclosed: ${open.join(', ')}`, `Validate, dispose, repair and close ${open.join(', ')} on ${spec.id}`);
-  if (own.some(finding => finding.repaired && finding.repairRevision >= review.revision)) return unready(spec.id, `a repair of ${spec.id} follows its latest assessment`, freshAssessment);
+  if (own.some(finding => lifecycle.repairedAfter(state, finding, review))) return unready(spec.id, `a repair of ${spec.id} follows its latest assessment`, freshAssessment);
 
   return unready(spec.id, `the spec assurance of ${spec.id} is unmet`, freshAssessment);
 }
