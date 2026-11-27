@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "name": "nightshift",
-  "version": "3.3.44",
+  "version": "3.3.45",
   "files": [
     {
       "path": ".claude-plugin/plugin.json",
       "bytes": 641,
-      "sha256": "030922725f717e7535f9065dbb714d5f502417c9a41f27f7e1f03971979d9c22"
+      "sha256": "ffe303859d28d18689fa59ec470e2e007092b6958bd867539b6d356965b6e419"
     },
     {
       "path": ".codex-plugin/plugin.json",
       "bytes": 1161,
-      "sha256": "cb066eba113264a7fd84e30cfa11a67a9739dc345415be2d4dea0e3d03e40f29"
+      "sha256": "6f88b5b1187e3c1970acab456f1b91305e2784a647df4fd18b79674af78e6487"
     },
     {
       "path": "LICENSE",
@@ -185,8 +185,8 @@
     },
     {
       "path": "internal/runtime/REFERENCE.md",
-      "bytes": 196643,
-      "sha256": "32d432483a3e1f2b931665da721d1997c40a61b0d85c4c87cf000a84b7faa796"
+      "bytes": 197533,
+      "sha256": "87b839325928ac62b1317c6e210975226c613d11378e7aa4289610d9af9f7d7b"
     },
     {
       "path": "internal/runtime/actions.js",
@@ -210,8 +210,8 @@
     },
     {
       "path": "internal/runtime/cli.js",
-      "bytes": 30302,
-      "sha256": "31153379ffa685e6f64919b3fbafc0bbdc49bba84ace14588fa1b169a839e9db"
+      "bytes": 30333,
+      "sha256": "8a855ce84dc9c67e5740ee7b1a9812097cf2f96e56e4668a28c8181723879eb8"
     },
     {
       "path": "internal/runtime/close.js",
@@ -335,8 +335,8 @@
     },
     {
       "path": "internal/runtime/lifecycle.js",
-      "bytes": 120074,
-      "sha256": "15ee3205709f5bf846c651d64fc7859bf39317943dce909003e073636136ccfb"
+      "bytes": 121842,
+      "sha256": "49ce577d388b5bc06a86dc52e17db3eeadd730b4f37d8ff222729e70b8f2d223"
     },
     {
       "path": "internal/runtime/limits.js",
@@ -490,8 +490,8 @@
     },
     {
       "path": "internal/runtime/store.js",
-      "bytes": 30111,
-      "sha256": "c61447583d0258df884cf8ad780fbd067894cf27a5205f0abb38fa7b8331394b"
+      "bytes": 30177,
+      "sha256": "5a0df1dc540fcc30318daccaf5e377b26c3b351e0e0236abd4586b97918ebd2d"
     },
     {
       "path": "internal/runtime/targets.js",
@@ -590,8 +590,8 @@
     },
     {
       "path": "internal/workflow.md",
-      "bytes": 45193,
-      "sha256": "9574673b053e9778a3a2c72988efb7beb87258d41366248ff128c320e1579f19"
+      "bytes": 45821,
+      "sha256": "a25f644f62ad1f7b9e577d05d24e63935b750a2cc7074495353ff305c14abddc"
     },
     {
       "path": "skills/exploring/SKILL.md",
@@ -675,13 +675,13 @@
     },
     {
       "path": "skills/revise-code/SKILL.md",
-      "bytes": 3905,
-      "sha256": "daf7b45a270664013eba5118c185e8c61d77fd00082b9c38b167ac09ce44169e"
+      "bytes": 4039,
+      "sha256": "f690643515c400310c6d27995990e3118aaac6bfb990a17d48807d7d3f395cad"
     },
     {
       "path": "skills/revise-docs/SKILL.md",
-      "bytes": 3934,
-      "sha256": "5c1848f3b3bad67ef852845fcc865a4e2b2328939110e77e28de95977bb10b60"
+      "bytes": 4054,
+      "sha256": "febdc4c2c47ec578d08a8b335a44670b41109705d8b288d1f1b2983bdcbbe29e"
     },
     {
       "path": "skills/revise-lore/SKILL.md",
@@ -690,8 +690,8 @@
     },
     {
       "path": "skills/revise-spec/SKILL.md",
-      "bytes": 3444,
-      "sha256": "9ecc66113ad9c0618e8da95281cc041c9b9dd50a614fc5b0615a38cfdfa00b4c"
+      "bytes": 3581,
+      "sha256": "e4080383ac39d97e1c80408725d84b25256ee88168eb58ab0b28782a1faa7ec5"
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
   "rule": "settled-record-verdict-1",
-  "digest": "4335b2928bad211513d79ba6659a58793aa7f28ec2611fe0e86f7964c75bed93",
-  "statement": "Review-model checks apply to live assessment and repair. The settled-record verdict continues to judge discharge and retired certificates from the same saved evidence and rules."
+  "digest": "2915e41ede94099d5993a94ff0fe50993f86b7c76b6924450083f93ace0ae22a",
+  "statement": "What the vouched checks accept and refuse is unchanged; this release changes which pending closures `repair` writes, its admission and status routing, while discharge and every gate read the same stored repair and closure state as before."
 }
