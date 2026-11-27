@@ -18,7 +18,7 @@ The evidence it answers, from the fortnightly table: minor-only repair cycles we
 
 5. **Scope.** The rule applies to every record kind that repairs: code, docs, spec and lore tasks and the closing record. In a spec task's own repair loop, a minor-only batch goes to a fresh whole-spec assessment rather than a resumed one. Runs keep their exact release for life, so runs created before the release that ships this spec keep today's rule; no stored finding is rewritten.
 
-6. **Instructions change with the runtime.** The operating brief's repair paragraph, WORKFLOW.md's repair paragraph, the revise-code and revise-spec skills, the runtime reference and the status rule strings that say to resume the reviewer that raised each repaired finding change in the same release, to say it for critical and important findings only.
+6. **Instructions change with the runtime.** Every operating instruction and rule string that tells the controller to resume the reviewer that raised each repaired finding, or to resume the reviewer after every repair batch, changes in the same release to say it for critical and important findings only; today these include the operating brief, WORKFLOW.md, the revise-code, revise-docs and revise-spec skills, the runtime reference and the status rule strings.
 
 ## Boundaries
 
@@ -33,7 +33,3 @@ The evidence it answers, from the fortnightly table: minor-only repair cycles we
 - The release gate, including the settled-record verdict tripwire, which lists `internal/runtime/lifecycle.js`, decided under the runtime reference's rule-identity rule.
 - The controller's choice to skip a resume for a minor-only batch is model-owned behavior; installed-host evidence of it is gathered on at least one host or the release notes mark it provisional.
 - After release, numbers 2 and 4 of the fortnightly table, read per batch, show whether minor-only batches got cheaper; that reading confirms and does not gate.
-
-## Decisions
-
-- 2026-11-27, the user: the commitments as stated, with commitment 4 holding the whole record rather than only the findings of the repaired kind.
