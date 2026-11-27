@@ -788,8 +788,12 @@ function reviewProgress(root, state, target, options = {}) {
   // none that saw the repair.
   const awaiting = findings.filter(finding => finding.repaired && !finding.pendingClosure);
   const kinds = [...new Set([...latest.keys(), ...awaiting.map(finding => findingKind(finding, target))])];
-  const repairedSince = (kind, review) => awaiting.some(finding => findingKind(finding, target) === kind && (!review || repairedAfter(state, finding, review)));
-  const freshDue = kinds.filter(kind => latest.get(kind)?.continues || repairedSince(kind, latest.get(kind)));
+  const assessments = target.reviews.filter(review => !review.relevance);
+  // Only a complete fresh assessment of the kind that examined its inputs after the repair has seen it; an incomplete or continued one,
+  // or one dispatched before the repair, has not.
+  const seen = (finding, kind) => assessments.some(review => reviewKind(review, target) === kind && completeAssessment(review) && !repairedAfter(state, finding, review));
+  const unseenRepair = kind => awaiting.some(finding => findingKind(finding, target) === kind && !seen(finding, kind));
+  const freshDue = kinds.filter(kind => latest.get(kind)?.continues || unseenRepair(kind));
   const owing = [...new Set(findings.filter(finding => finding.pendingClosure).map(finding => finding.pendingClosure.lineage))];
   const resumeTargets = owing.map(lineage => {
     const requestId = latestDispatchOf(root, state, target, lineage);

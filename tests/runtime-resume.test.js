@@ -1551,7 +1551,7 @@ const routing = review => ({ next: review.next, resumeTargets: review.resumeTarg
 
 // Records the dispatch of a fixture assessment at the current revision, as a real dispatch registers its reviewer before it assesses.
 const registerDispatch = (f, assessment) => f.store.update(actor, f.store.read().revision, 'fixture-dispatch-registration', state => {
-  state.workers.push({ id: assessment.requestId, session: assessment.session, assignment: 'Fixture assessment', role: 'reviewer', writes: [], host: 'claude', status: 'complete', registeredRevision: state.revision });
+  state.workers.push({ id: assessment.requestId, session: assessment.session, assignment: 'Fixture assessment', role: 'reviewer', writes: [], host: 'claude', status: 'complete', registeredRevision: state.revision + 1 });
 });
 
 test('a repaired minor finding of a spec task owes no closure and goes to a fresh whole-spec assessment', t => {
@@ -1676,6 +1676,22 @@ test('a code assessment dispatched before a minor repair to a documentation path
   // Assert
   assert.deepEqual(afterStale, { gate: false, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['code'] } });
   assert.equal(gate(), true);
+});
+
+test('an incomplete fresh assessment after a minor repair leaves status routing to a fresh assessment', t => {
+  // Arrange
+  const f = lifecycleFixture(t, [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior' } }]);
+  f.check('code');
+  f.review('code', f.assessment('code', ['code'], { findings: [finding('wording', 'minor')] }));
+  repairLatestFinding(f, 'code', '.nightshift/BUGS.md', '# Bugs\n\nReworded operating note.\n');
+  const incomplete = f.assessment('code', ['code'], { status: 'incomplete' });
+  registerDispatch(f, incomplete);
+
+  // Act
+  f.review('code', incomplete);
+
+  // Assert
+  assert.deepEqual({ gate: reviewGate(f.root, f.task('code'), f.store.read()), route: routing(obligationBrief(f.store.read()).next.find(item => item.id === 'code').review) }, { gate: false, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['code'] } });
 });
 
 test('a mixed closing batch whose resumed review saw every repair is not carried across a replaced closing record', t => {
