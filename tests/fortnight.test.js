@@ -221,18 +221,45 @@ test('the numbers are the same before and after the store is compacted', () => {
   }
 });
 
-test('fresh assessments count neither an imported replacement nor a task left incomplete', () => {
-  const imported = [review(FRESH, { revision: 2 }), review(UNIMPORTED, { revision: 4, continues: { kind: 'replacement', requestId: FRESH } }), review(GATE, { revision: 6 })];
-  const rows = [
-    ['created', '2026-10-01T00:00:00.000Z', state(0, 'pending')],
-    ['start-task', '2026-10-01T01:00:00.000Z', state(1, 'active')],
-    ['advance', '2026-10-01T03:00:00.000Z', state(2, 'complete')],
-  ];
-  const final = { ...JSON.parse(state(2, 'complete', { task: { reviews: imported } })), status: 'running' };
-  final.tasks.push({ id: 'task-b', kind: 'code', status: 'active', checks: [], reviews: [review(REOPEN, { revision: 7, taskId: 'task-b' })], findings: [] });
-  const { root, store } = writeStore(rows, final);
+test('fresh assessments count neither an imported replacement, a fresh receipt never imported nor a task left incomplete', () => {
+  const replacement = { continues: { kind: 'replacement', requestId: FRESH } };
+  // Each dispatch is a worker with its own native session and artifact folder, as the replacement's continuation requires of FRESH.
+  const session = requestId => ({ host: 'codex', session: `session-${requestId}` });
+  const worker = (requestId, taskId = 'task-a') => ({ id: requestId, role: 'reviewer', taskId, ...session(requestId), artifactDirectory: `.nightshift/runs/reviews/${requestId}` });
+  // The run as each transition saves it: a dispatch appends its worker, an import appends its review and completes its worker, and the
+  // last history row is the current state.
+  const run = { schema: 1, id: RUN, revision: 0, status: 'running', createdAt: '2026-10-01T00:00:00Z', workers: [], tasks: ['task-a', 'task-b'].map(id => ({ id, kind: 'code', status: 'pending', checks: [], reviews: [], findings: [] })) };
+  const rows = [];
+  const record = (kind, recordedAt, change = () => {}) => {
+    change();
+    run.revision = rows.length;
+    rows.push([kind, recordedAt, JSON.stringify(run)]);
+  };
+  const task = id => run.tasks.find(candidate => candidate.id === id);
+  const dispatched = (recordedAt, requestId, taskId) => record('dispatch-started', recordedAt, () => run.workers.push({ ...worker(requestId, taskId), status: 'active' }));
+  const imported = (recordedAt, requestId, taskId = 'task-a', extra = {}) => record('review', recordedAt, () => {
+    Object.assign(run.workers.find(candidate => candidate.id === requestId), { status: 'complete' });
+    task(taskId).reviews.push(review(requestId, { revision: rows.length, taskId, ...extra }));
+  });
+  record('created', '2026-10-01T00:00:00.000Z');
+  record('start-task', '2026-10-01T01:00:00.000Z', () => { task('task-a').status = 'active'; });
+  dispatched('2026-10-01T01:10:00.000Z', FRESH);
+  imported('2026-10-01T01:30:00.000Z', FRESH);
+  dispatched('2026-10-01T01:40:00.000Z', UNIMPORTED);
+  imported('2026-10-01T02:00:00.000Z', UNIMPORTED, 'task-a', replacement);
+  dispatched('2026-10-01T02:10:00.000Z', GATE);
+  imported('2026-10-01T02:30:00.000Z', GATE);
+  // A fresh lead whose receipt was written but never imported, as when the controller dispatched a second lead and imported only one.
+  dispatched('2026-10-01T02:40:00.000Z', NEVER);
+  record('advance', '2026-10-01T03:00:00.000Z', () => { Object.assign(run.workers.find(candidate => candidate.id === NEVER), { status: 'complete' }); task('task-a').status = 'complete'; task('task-b').status = 'active'; });
+  dispatched('2026-10-01T03:10:00.000Z', REOPEN, 'task-b');
+  imported('2026-10-01T03:30:00.000Z', REOPEN, 'task-b');
+  const { root, runs, store } = writeStore(rows, JSON.parse(rows.at(-1)[2]));
+  const receipt = (requestId, extra = {}) => review(requestId, { ...session(requestId), ...extra });
+  writeReceipts(runs, { [FRESH]: receipt(FRESH), [UNIMPORTED]: receipt(UNIMPORTED, replacement), [GATE]: receipt(GATE), [NEVER]: receipt(NEVER), [REOPEN]: receipt(REOPEN, { taskId: 'task-b' }) });
   try {
     const result = compute(store, { anchor: '2026-10-18' });
+    assert.equal(result.receipts.onTheseRuns, 5);
     assert.deepEqual(result.freshPerTask.tasks.map(entry => [entry.taskId, entry.fresh]), [['task-a', 2]]);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
