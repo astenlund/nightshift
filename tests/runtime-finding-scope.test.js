@@ -282,8 +282,10 @@ test('an edit outside a finding\'s files leaves validate and dispose working, an
   await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: one.id });
   await f.act({ action: 'validate', receipt: f.receiptPath(skeptic), findingId: two.id });
   await dispose(f.act, one.id);
+  await dispose(f.act, two.id);
   fs.writeFileSync(path.join(f.root, 'a.txt'), 'alpha repaired\n');
   await f.act({ action: 'repair', findingIds: [one.id] }).catch(error => { assert.fail(error.message); });
+  // The repair of the first finding's file leaves the second finding's validation current, so it can be disposed again.
   await dispose(f.act, two.id);
   fs.writeFileSync(path.join(f.root, 'b.txt'), 'beta repaired\n');
   await assert.rejects(f.act({ action: 'dispose', findingId: two.id, disposition: 'skip', reason: 'Changed', obligation: { classification: 'optional', basis: 'x' } }), { code: 'stale-validation', message: /b\.txt/ });

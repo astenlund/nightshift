@@ -145,6 +145,12 @@ function unresolvedFindings(task) {
   return task.findings.filter(finding => !finding.disposition || finding.disposition === 'implement' && !finding.repaired || finding.pendingClosure);
 }
 
+// Whether repairing a finding sets its pending closure. On a record created with the fresh-gate rule only a critical or important
+// finding, by the severity its raising reviewer recorded, owes resumed closure; a record created earlier keeps it for every repair.
+function owesResumedClosure(state, finding) {
+  return !state.minorClosureAtFreshGate || finding.severity !== 'minor';
+}
+
 // Every finding of the run pending closure: on tasks, on the closing record, and carried across a replaced closing record.
 function pendingClosures(state) {
   return [...state.tasks.flatMap(task => task.findings), ...(state.closing?.docs?.findings ?? []), ...(state.closing?.carriedFindings ?? [])].filter(finding => finding.pendingClosure);
@@ -726,7 +732,8 @@ function freshAssessmentTask(state, task, kind, target) {
 }
 
 // What a target's review needs next, in order: validation and disposition, then repairs, then closures by resuming the reviewers that
-// raised the repaired findings, then a fresh assessment of each kind whose latest assessment is a continued one. resumeTargets names
+// raised the repaired findings owing closure, then a fresh assessment of each kind whose latest assessment is a continued one or
+// predates a repair of that kind that owes no closure. resumeTargets names
 // the dispatch to resume, the task it belongs to and whether to resume or replace it, for each lineage owing closures. After a task's
 // repair, freshTargets names the fresh assessments due because the repair left a latest assessment of another review kind, of this or
 // any other task, predating it and no longer matching current inputs: one its gate accepts and finds stale, or any other whose reviewed
@@ -738,7 +745,10 @@ function freshAssessmentTask(state, task, kind, target) {
 function reviewProgress(root, state, target, options = {}) {
   const findings = target.findings;
   const latest = latestByKind(target, state);
-  const freshDue = [...latest].filter(([, review]) => review.continues).map(([kind]) => kind);
+  // A finding repaired at or after the latest assessment of its kind with no closure pending, such as a repaired minor finding, is
+  // settled only by a fresh assessment of that kind, as the gate's repair check requires.
+  const repairedSince = (kind, review) => findings.some(finding => finding.repaired && !finding.pendingClosure && findingKind(finding, target) === kind && finding.repairRevision >= review.revision);
+  const freshDue = [...latest].filter(([kind, review]) => review.continues || repairedSince(kind, review)).map(([kind]) => kind);
   const owing = [...new Set(findings.filter(finding => finding.pendingClosure).map(finding => finding.pendingClosure.lineage))];
   const resumeTargets = owing.map(lineage => {
     const requestId = latestDispatchOf(root, state, target, lineage);
@@ -906,7 +916,7 @@ function buildObligationBrief(state, root, options) {
     followups: state.followups.filter(item => item.status !== 'resolved'),
     rules: isReviewContext(state)
       ? `This is standalone revision, not a delivery run. Preserve attributed independent assessment, skeptical validation, dispositions, repair closure, freshness, owner identity and resources. ${REPAIR_RULE} No delivery closing, continuation, retrospective or triage is required. Report pending follow-ups and actual limits. Publication requires separate authority.`
-      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: resume the reviewer that raised each repaired finding to record its closure, and pass a gate only on a fresh assessment. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage need a closing docs review (task ${CLOSING_TARGET}) before completion; edits outside the documentation paths after triage also hold completion until a fresh task assessment covers them, they are reverted or, where no task assessment can settle them, the user decides and record-decision records that decision. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
+      : `Continue authorized independent work and recovery. Every repair needs cumulative strong broad review: dispose every finding on a record before its first repair, resume the reviewer that raised each repaired critical or important finding to record its closure, as status resumeTargets names them, and pass a gate only on a fresh assessment, which alone settles a repaired minor finding. ${REPAIR_RULE} Validate every finding with a fresh skeptic before disposition. Preserve writer ownership. Update documentation and obtain its independent docs review, then retrospective, then follow-up triage; a handed-over run records its morning report before triage. Tracking edits after triage need a closing docs review (task ${CLOSING_TARGET}) before completion; edits outside the documentation paths after triage also hold completion until a fresh task assessment covers them, they are reverted or, where no task assessment can settle them, the user decides and record-decision records that decision. Missing or stale evidence is incomplete. Publication requires authority. Reconcile this record with actual files after compaction.`,
   };
 }
 
@@ -1140,8 +1150,12 @@ function transition(state, request, integration = null) {
       Object.assign(finding, { obligation: request.obligation ?? null, disposition: request.disposition, reason: request.reason, route: request.route ?? null, dispositionRevision: state.revision + 1 });
       break;
     }
-    case 'repair':
+    case 'repair': {
       requireCondition(Array.isArray(request.findingIds) && request.findingIds.length > 0, 'invalid-repair', 'Repair must name its findings');
+      if (state.minorClosureAtFreshGate) {
+        const undisposed = task.findings.filter(finding => !finding.disposition).map(finding => finding.id);
+        requireCondition(undisposed.length === 0, 'undisposed-findings', `Dispose every finding on ${task.id} before repairing any of them; without a disposition: ${undisposed.join(', ')}`);
+      }
       for (const id of request.findingIds) {
         const finding = task.findings.find(candidate => candidate.id === id);
         requireCondition(finding?.disposition === 'implement', 'unauthorized-repair', 'Repair requires a validated implement disposition');
@@ -1150,8 +1164,11 @@ function transition(state, request, integration = null) {
       }
       for (const id of request.findingIds) {
         const finding = task.findings.find(candidate => candidate.id === id);
-        // The reviewer that raised the finding, or its replacement, must verify the repair before any gate passes.
-        Object.assign(finding, { repaired: true, repairRevision: state.revision + 1, pendingClosure: { lineage: finding.raisedBy?.lineage ?? null, requestId: finding.raisedBy?.requestId ?? null, revision: state.revision + 1, ...(task.kind === 'closing' ? { progressBinding: structuredClone(finding.progressBinding) } : {}) } });
+        Object.assign(finding, { repaired: true, repairRevision: state.revision + 1 });
+        // The reviewer that raised a critical or important finding, or its replacement, must verify the repair before any gate passes; a
+        // repaired minor finding settles at its kind's fresh gate, which refuses while a finding of that kind was repaired after the latest
+        // assessment. A run created before that rule resumes the raising reviewer for every repaired finding.
+        if (owesResumedClosure(state, finding)) finding.pendingClosure = { lineage: finding.raisedBy?.lineage ?? null, requestId: finding.raisedBy?.requestId ?? null, revision: state.revision + 1, ...(task.kind === 'closing' ? { progressBinding: structuredClone(finding.progressBinding) } : {}) };
       }
       task.lastRepair = { revision: state.revision + 1, kinds: [...new Set(request.findingIds.map(id => findingKind(task.findings.find(candidate => candidate.id === id), task)))] };
       // Closing repairs are tracking edits after triage; they need a further closing review, not reopened tasks or new closing evidence.
@@ -1162,6 +1179,7 @@ function transition(state, request, integration = null) {
       delete task.docsExemption;
       if (task.resumeStage) task.resumeStage = task.kind === 'lore' ? 'retrospective' : 'documentation';
       break;
+    }
     case 'advance': {
       if (isReviewContext(state) && request.docsExemption !== undefined) {
         requireCondition(task.kind === 'docs' && !task.reviews.some(review => reviewKind(review, task) === 'docs'), 'invalid-exemption', 'Only a standalone docs revision without a docs assessment can record a mechanical exemption');

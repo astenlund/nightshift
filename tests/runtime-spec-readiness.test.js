@@ -199,9 +199,9 @@ test('add-spec-review records its link beside the agreement, leaving validations
   f.act({ action: 'dispose', taskId: 'code', findingId: first.id, ...DISPOSE });
   f.write(SPEC, '# Governing spec, edited from the code task\n');
   assert.throws(() => f.act({ action: 'dispose', taskId: 'code', findingId: second.id, ...DISPOSE }), { code: 'stale-validation' });
-  f.act({ action: 'repair', taskId: 'code', findingIds: [first.id] });
   f.act({ action: 'validate', taskId: 'code', findingId: second.id, validation: validation(f, second.id) });
   f.act({ action: 'dispose', taskId: 'code', findingId: second.id, ...DISPOSE });
+  f.act({ action: 'repair', taskId: 'code', findingIds: [first.id] });
   assert.equal(f.task('code').findings[1].disposition, 'implement');
   // The linked spec task leaves review straight for completion, without a documentation stage.
   f.act({ action: 'start-task', taskId: 'code-governing-spec' });

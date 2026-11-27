@@ -133,7 +133,7 @@ async function execute(root, request, dependencies = {}) {
       }
       // Every run created through the runtime carries the docs gate; only fixtures reproducing earlier releases create one without it.
       requireCondition(request.runId === undefined || store.read()?.id === request.runId, 'wrong-run', 'An acceptance selector must name the actual current delivery');
-      const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0), docsGate: true, integration: dependencies.resourceContext?.integration });
+      const created = store.create({ ...request, resources, resourceMode: resources ? 'bound' : 'development', controllerClaim: controllerClaim(request.controller, observation, 0), docsGate: true, minorClosureAtFreshGate: true, integration: dependencies.resourceContext?.integration });
 
       // The scratch status carries the warning that .tmp is not ignored before any agent writes scratch there.
       return { ...created, controllerReady: created.status === 'running', scratch: scratchStatus(store.root) };

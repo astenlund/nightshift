@@ -102,9 +102,10 @@ function fixture(t, tasks = [{ id: 'task', title: 'Work', agreement: { source: '
   return { root, store, base, act, receipt, dispatch, task, brief, check };
 }
 
-// A fresh lead raises findings, a fresh skeptic confirms them with a repair proposal, and the controller repairs them.
-async function raise(f, ids = ['boundary']) {
-  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: ids.map(id => finding(id)) });
+// A fresh lead raises findings, important unless `severities` names another severity for an id, and a fresh skeptic confirms them with
+// a repair proposal.
+async function raise(f, ids = ['boundary'], severities = {}) {
+  const lead = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: ids.map(id => finding(id, severities[id])) });
   await f.act({ action: 'review', receipt: f.receipt(lead) });
   const findings = f.task().findings.filter(item => item.raisedBy.requestId === lead.receipt.requestId);
   const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [COUNTERPART], findings }, { findings: findings.map(item => verdict(item.id)) });
@@ -123,8 +124,9 @@ function rewriteReceipt(f, result, edit) {
   fs.writeFileSync(result.receiptFile, JSON.stringify({ ...saved, eventHash: hash(Buffer.from(bytes)) }, null, 2) + '\n');
 }
 
-async function raiseAndRepair(f, ids) {
-  const raised = await raise(f, ids);
+// A fresh lead raises findings, a fresh skeptic confirms them with a repair proposal, and the controller repairs them.
+async function raiseAndRepair(f, ids, severities) {
+  const raised = await raise(f, ids, severities);
   for (const item of raised.findings) await f.act({ action: 'dispose', findingId: item.id, disposition: 'implement', reason: 'Required outcome', obligation: { classification: 'required', basis: 'The accepted outcome' } });
   fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
   await f.act({ action: 'repair', findingIds: raised.findings.map(item => item.id) });
@@ -174,6 +176,113 @@ test('the raising reviewer resumes in a new copy to record closure, and only a f
   assert.deepEqual(request.acknowledgements, ['The boundary repair is settled by the user']);
   assert.match(calls[1].prompt, /Recorded acknowledgements[^]*The boundary repair is settled by the user/);
   assert.match(calls[1].prompt, /^You are a fresh independent strong lead reviewer/);
+});
+
+const disposeImplement = (f, id) => f.act({ action: 'dispose', findingId: id, disposition: 'implement', reason: 'Worth fixing', obligation: { classification: 'optional', basis: 'The accepted outcome' } });
+
+// Disposes the findings as implement, repairs them with an edit to a documentation path, which leaves the code assessment current on a
+// run with the docs gate, and reruns the check, so the repair alone decides what the gate and status read.
+async function repairInDocumentation(f, ids, content) {
+  for (const id of ids) await disposeImplement(f, id);
+  fs.writeFileSync(path.join(f.root, 'README.md'), content);
+  await f.act({ action: 'repair', findingIds: ids });
+  await f.check();
+}
+
+// Records a run as an earlier release saved it, without the fresh-gate closure rule.
+const asEarlierRelease = f => f.store.update(actor, f.store.read().revision, 'fixture-earlier-release', state => { delete state.minorClosureAtFreshGate; });
+
+test('a repaired minor finding owes no closure, and only a fresh assessment after its repair settles it, also when that assessment raised it', async t => {
+  // Arrange
+  const f = fixture(t);
+  await f.check();
+  const { findings } = await raise(f, ['wording'], { wording: 'minor' });
+  await repairInDocumentation(f, [findings[0].id], '# Project, reworded\r\n');
+  const gate = () => reviewGate(f.root, f.task(), f.store.read());
+  const reading = () => ({ next: f.brief().review.next, resumeTargets: f.brief().review.resumeTargets, freshDue: f.brief().review.freshDue, gate: gate() });
+
+  // Act
+  const repaired = f.task().findings.find(item => item.id === findings[0].id);
+  const afterRepair = reading();
+  const refused = await f.act({ action: 'advance' }).then(() => null, error => error);
+  const fresh = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('again', 'minor')] });
+  await f.act({ action: 'review', receipt: f.receipt(fresh) });
+  const again = f.task().findings.filter(item => item.raisedBy.requestId === fresh.receipt.requestId);
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [COUNTERPART], findings: again }, { findings: again.map(item => verdict(item.id)) });
+  await f.act({ action: 'validate', receipt: f.receipt(skeptic), findingId: again[0].id });
+  await repairInDocumentation(f, [again[0].id], '# Project, reworded again\r\n');
+  const afterSecondRepair = reading();
+  const last = await f.dispatch({ kind: 'code', candidates: [LEAD] });
+  await f.act({ action: 'review', receipt: f.receipt(last) });
+
+  // Assert
+  assert.equal(f.store.read().minorClosureAtFreshGate, true);
+  assert.deepEqual({ repaired: repaired.repaired, pendingClosure: repaired.pendingClosure }, { repaired: true, pendingClosure: undefined });
+  // The lead assessment stays current through the documentation-path repair, so only the repair withholds the gate.
+  const due = { next: 'fresh-assessment', resumeTargets: [], freshDue: ['code'], gate: false };
+  assert.deepEqual({ afterRepair, afterSecondRepair }, { afterRepair: due, afterSecondRepair: due });
+  assert.equal(refused?.code, 'review-required');
+  assert.deepEqual({ next: f.brief().review.next, gate: gate() }, { next: null, gate: true });
+});
+
+test('a mixed batch resumes only the lineage that raised its important finding, and its minor finding owes no closure', async t => {
+  // Arrange
+  const f = fixture(t);
+  const first = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('boundary')] });
+  await f.act({ action: 'review', receipt: f.receipt(first) });
+  const second = await f.dispatch({ kind: 'code', candidates: [LEAD] }, { findings: [finding('wording', 'minor')] });
+  await f.act({ action: 'review', receipt: f.receipt(second) });
+  const findings = f.task().findings;
+  const skeptic = await f.dispatch({ kind: 'skeptic', candidates: [COUNTERPART], findings }, { findings: findings.map(item => verdict(item.id)) });
+  for (const item of findings) await f.act({ action: 'validate', receipt: f.receipt(skeptic), findingId: item.id });
+  for (const item of findings) await disposeImplement(f, item.id);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
+
+  // Act
+  await f.act({ action: 'repair', findingIds: findings.map(item => item.id) });
+
+  // Assert
+  const byLocal = Object.fromEntries(f.task().findings.map(item => [item.localId, item]));
+  assert.deepEqual({ boundary: byLocal.boundary.pendingClosure?.lineage, wording: byLocal.wording.pendingClosure, wordingRepaired: byLocal.wording.repaired }, { boundary: first.receipt.lineage ?? first.receipt.requestId, wording: undefined, wordingRepaired: true });
+  const review = f.brief().review;
+  assert.deepEqual({ next: review.next, targets: review.resumeTargets.map(item => item.requestId) }, { next: 'resume', targets: [first.receipt.requestId] });
+});
+
+test('repair is refused while any finding on the record lacks a disposition, and records nothing', async t => {
+  // Arrange
+  const f = fixture(t);
+  const { findings } = await raise(f, ['boundary', 'wording'], { wording: 'minor' });
+  const [boundary, wording] = ['boundary', 'wording'].map(local => findings.find(item => item.localId === local));
+  await disposeImplement(f, boundary.id);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
+  const revision = f.store.read().revision;
+
+  // Act
+  const refused = await f.act({ action: 'repair', findingIds: [boundary.id] }).then(() => null, error => error);
+
+  // Assert
+  assert.equal(refused?.code, 'undisposed-findings');
+  assert.ok(refused.message.endsWith(`without a disposition: ${wording.id}`), refused.message);
+  assert.equal(f.store.read().revision, revision);
+  assert.notEqual(f.task().findings.find(item => item.id === boundary.id).repaired, true);
+});
+
+test('a run saved before the fresh-gate rule resumes the raising reviewer for a repaired minor finding and repairs before every disposition', async t => {
+  // Arrange
+  const f = fixture(t);
+  asEarlierRelease(f);
+  const { lead, findings } = await raise(f, ['wording', 'later'], { wording: 'minor' });
+  const wording = findings.find(item => item.localId === 'wording');
+  await disposeImplement(f, wording.id);
+  fs.writeFileSync(path.join(f.root, 'subject.txt'), 'repaired\r\n');
+
+  // Act
+  await f.act({ action: 'repair', findingIds: [wording.id] });
+
+  // Assert
+  assert.equal('minorClosureAtFreshGate' in f.store.read(), false);
+  assert.equal(f.task().findings.find(item => item.id === wording.id).pendingClosure?.requestId, lead.receipt.requestId);
+  assert.deepEqual(f.brief().review.resumeTargets.map(item => item.requestId), [lead.receipt.requestId]);
 });
 
 test('a resume is refused for unknown, foreign, incomplete, sessionless, superseded, held, malformed and runtime-field requests', async t => {
@@ -1425,6 +1534,60 @@ test('the closing record and the triage baseline accept only fresh assessments, 
   // Assert
   assert.deepEqual(outcomes, { baselineKept: true, baselineMoved: true, continuedClosing: 'closing-review-unresolved', closingTargets: [[CLOSING_TARGET, 'pending-closure']], carriedByTriage: true, carriedByReset: [closingFinding.id], pendingAfterReset: 'closure-pending', restored: true, refused: 'closing-review-unresolved', closedButContinued: 'closing-review-unresolved', completed: 'complete' });
   assert.equal(f.store.read().closing.docs.findings.find(item => item.id === closingFinding.id).pendingClosure, undefined);
+});
+
+// Validates, disposes and repairs the latest finding of a task or of the closing record through the transitions, returning it repaired.
+function repairLatestFinding(f, taskId, file, content) {
+  const target = () => (taskId === CLOSING_TARGET ? f.store.read().closing.docs : f.task(taskId));
+  const latest = target().findings.at(-1);
+  f.act({ action: 'validate', taskId, findingId: latest.id, validation: { session: `${taskId}-skeptic`, attributionVerified: true, verdict: 'confirmed', evidence: 'The wording misleads a reader', repairProposal: 'Reword the sentence', snapshot: snapshot(f.root, [file]) } });
+  f.act({ action: 'dispose', taskId, findingId: latest.id, disposition: 'implement', reason: 'Worth fixing', obligation: { classification: 'optional', basis: 'Clarity' } });
+  f.write(file, content);
+  f.act({ action: 'repair', taskId, findingIds: [latest.id] });
+  return target().findings.find(item => item.id === latest.id);
+}
+
+const routing = review => ({ next: review.next, resumeTargets: review.resumeTargets, freshDue: review.freshDue });
+
+test('a repaired minor finding of a spec task owes no closure and goes to a fresh whole-spec assessment', t => {
+  // Arrange
+  const f = lifecycleFixture(t, [{ id: 'spec', title: 'Spec', kind: 'spec', agreement: { source: 'User', outcome: 'Accepted behavior', spec: 'spec.md' } }]);
+  f.review('spec', f.assessment('spec', ['spec'], { findings: [finding('wording', 'minor')] }));
+
+  // Act
+  const repaired = repairLatestFinding(f, 'spec', 'spec.md', '# Spec\n\nReworded.\n');
+  const route = routing(obligationBrief(f.store.read()).next.find(item => item.id === 'spec').review);
+  f.review('spec', f.assessment('spec', ['spec']));
+
+  // Assert
+  assert.deepEqual({ pendingClosure: repaired.pendingClosure, route }, { pendingClosure: undefined, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['spec'] } });
+  assert.equal(reviewGate(f.root, f.task('spec'), f.store.read()), true);
+});
+
+test('a repaired minor finding of the closing record owes no closure and holds completion until a fresh closing review', t => {
+  // Arrange
+  const f = lifecycleFixture(t, [{ id: 'code', title: 'Code', agreement: { source: 'User', outcome: 'Accepted behavior' } }]);
+  f.check('code');
+  f.review('code', f.assessment('code', ['code']));
+  f.act({ action: 'advance', taskId: 'code' });
+  f.review('code', f.assessment('docs', ['code']));
+  f.act({ action: 'advance', taskId: 'code' });
+  f.act({ action: 'advance', taskId: 'code', evidence: 'Documented' });
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up.\n');
+  f.review(CLOSING_TARGET, f.assessment('docs', ['code'], { findings: [finding('wording', 'minor')] }));
+  const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
+
+  // Act
+  const repaired = repairLatestFinding(f, CLOSING_TARGET, '.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up, reworded.\n');
+  const route = routing(obligationBrief(f.store.read()).closing.docsReview.review);
+  const beforeFresh = attempt();
+  f.review(CLOSING_TARGET, f.assessment('docs', ['code']));
+  const afterFresh = attempt();
+
+  // Assert
+  assert.deepEqual({ pendingClosure: repaired.pendingClosure, route, beforeFresh, afterFresh }, { pendingClosure: undefined, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['docs'] }, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
 });
 
 test('a closing finding carried across a reset record keeps its validation snapshot as stored evidence', t => {
