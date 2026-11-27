@@ -384,8 +384,7 @@ function minorOnlyCycles(transitions) {
 }
 
 // Fresh assessments per completed task: the imported reviews on each completed record, the closing record included, that continue
-// no earlier session, a replacement continuing a lineage and so not counted; the direct reading of review loops that do not
-// converge.
+// no earlier session, a replacement continuing a lineage and so not counted; an indicator of review loops that do not converge.
 function freshPerTask(runs) {
   const complete = completeRecordKeys(runs);
   return runs.flatMap(run => run.records.filter(record => complete.has(`${run.id}\n${record.id}`)).map(record => ({ runId: run.id, taskId: record.id, kind: record.kind, fresh: importedReviews(record).filter(isFresh).length })));
