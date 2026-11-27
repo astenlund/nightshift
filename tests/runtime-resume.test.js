@@ -1619,6 +1619,36 @@ test('a repaired minor closing finding is carried across a replaced closing reco
   assert.deepEqual({ carried: Boolean(carried?.repaired), route, beforeFresh, afterFresh }, { carried: true, route: { next: 'fresh-assessment', resumeTargets: [], freshDue: ['docs'] }, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
 });
 
+test('a closing review assessed before a minor closing repair and imported after it does not stop the carry across a replaced closing record', t => {
+  // Arrange
+  // A run of one lore task has no docs gate, so only the closing record can require a docs-kind assessment of the repair.
+  const f = lifecycleFixture(t, [{ id: 'lore', title: 'Lore', kind: 'lore', agreement: { source: 'User', outcome: 'Accepted retrospective' } }]);
+  f.act({ action: 'start-task', taskId: 'lore' });
+  f.act({ action: 'advance', taskId: 'lore', evidence: 'The requested retrospective is recorded' });
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded' });
+  f.act({ action: 'triage', evidence: 'Follow-ups triaged' });
+  f.write('.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up.\n');
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore'], { findings: [finding('wording', 'minor')] }));
+  // A second closing reviewer assesses the record before the repair and reports only after it.
+  const stale = f.assessment('docs', ['lore']);
+  const repaired = repairLatestFinding(f, CLOSING_TARGET, '.nightshift/BUGS.md', '# Bugs\n\nTracked follow-up, reworded.\n');
+  const attempt = () => { try { return f.act({ action: 'complete' }).status; } catch (error) { return error.code; } };
+
+  // Act
+  f.review(CLOSING_TARGET, stale);
+  // A clean lore assessment fresh against the whole inventory, then a reset closing record and triage recorded again on a new baseline.
+  f.review('lore', f.assessment('code', ['lore']));
+  f.act({ action: 'retrospective', evidence: 'Retrospective recorded again' });
+  f.act({ action: 'triage', evidence: 'Triage recorded again' });
+  const carried = f.store.read().closing.docs.findings.find(item => item.id === repaired.id);
+  const beforeFresh = attempt();
+  f.review(CLOSING_TARGET, f.assessment('docs', ['lore']));
+  const afterFresh = attempt();
+
+  // Assert
+  assert.deepEqual({ carried: Boolean(carried?.repaired), beforeFresh, afterFresh }, { carried: true, beforeFresh: 'closing-review-unresolved', afterFresh: 'complete' });
+});
+
 test('a mixed closing batch whose resumed review saw every repair is not carried across a replaced closing record', t => {
   // Arrange
   // A run of one lore task has no docs gate, so only the closing record can require a docs-kind assessment of the repairs.

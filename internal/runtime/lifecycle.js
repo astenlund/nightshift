@@ -387,7 +387,7 @@ function carriedFindings(state) {
 }
 
 // Whether no complete closing review has seen a closing finding's repair, given its record's latest complete closing review, fresh or
-// continued, if any. A repaired finding owing no pending closure, such as a repaired minor one, carries that obligation itself, also
+// continued, imported on the inputs it assessed, if any. A repaired finding owing no pending closure, such as a repaired minor one, carries that obligation itself, also
 // across a replaced record, which has no review that saw it. Once a complete review postdates the repair, the record's own gate, which
 // accepts only a fresh latest review, and the triage baseline's coverage decide the rest, as for a finding whose closure was recorded.
 function awaitsClosingReview(finding, seen) {
@@ -395,7 +395,7 @@ function awaitsClosingReview(finding, seen) {
 }
 
 function latestCompleteClosingReview(record, state) {
-  return latestReview(record.reviews.filter(review => !review.relevance && review.status === 'complete').map(review => ({ review })), state)?.review;
+  return latestReview(record.reviews.filter(review => !review.relevance && !review.importedHistorical && review.status === 'complete').map(review => ({ review })), state)?.review;
 }
 
 function recordRetrospective(state, evidence) {
@@ -1089,7 +1089,9 @@ function transition(state, request, integration = null) {
       const keepsClosing = !closing && Boolean(state.closing?.triageEvidence) && task.status === 'complete' && !review.relevance && !historical && !superseded && review.findings.length === 0
         && acceptableAssessment(candidate, task) && coversDimensions(candidate, kind);
       if (!closing && !review.relevance && !historical && !superseded && !keepsClosing && (task.status !== 'complete' || previous?.snapshot?.digest !== review.snapshot.digest || !isDeepStrictEqual(previous?.commitments, review.commitments))) resetClosing(state);
-      task.reviews.push({ ...review, revision });
+      // A closing review imported on inputs that changed since it assessed them, such as one assessed before a repair, never counts as
+      // having seen what changed; recording that lets a replaced record still carry the repairs it missed.
+      task.reviews.push({ ...review, revision, ...(closing && historical ? { importedHistorical: true } : {}) });
       const lineage = lineageOf(review) ?? null;
       for (const finding of review.findings) {
         text(finding.id, 'finding.id');
